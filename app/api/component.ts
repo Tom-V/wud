@@ -2,7 +2,6 @@ import { byValues, byString } from 'sort-es';
 
 import express, { Request, Response } from 'express';
 import nocache from 'nocache';
-import * as registry from '../registry';
 import * as states from '../registry/states';
 import { BaseConfig, Component, ComponentKind } from '../registry/Component';
 

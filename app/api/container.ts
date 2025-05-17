@@ -33,7 +33,6 @@ function getTriggers(): { [key: string]: Trigger } {
 /**
  * Get containers from store.
  * @param query
- * @returns {*}
  */
 export function getContainersFromStore(query: storeContainer.Query) {
     return storeContainer.getContainers(query);

@@ -6,6 +6,7 @@ import { Component, ComponentKind } from './Component';
 import { getWatcherConfigurations, getTriggerConfigurations, getRegistryConfigurations, getAuthenticationConfigurations, BaseConfiguration } from '../configuration';
 import { Trigger } from '../triggers/providers/Trigger';
 import { states, getState } from './states';
+import { onConfigFileChange } from '../configuration';
 import capitalize from 'capitalize';
 
 export const log = logger.child({ component: 'registry' });
@@ -261,6 +262,7 @@ export async function deregisterAll() {
     }
 }
 
+let initialized = false;
 export async function init() {
     // Register triggers
     await registerTriggers();
@@ -277,4 +279,12 @@ export async function init() {
     // Gracefully exit when possible
     process.on('SIGINT', deregisterAll);
     process.on('SIGTERM', deregisterAll);
+
+    if (!initialized) {
+        initialized = true;
+        onConfigFileChange(async () => {
+            await deregisterAll();
+            await init();
+        });
+    }
 }

@@ -7,11 +7,13 @@ jest.mock('../configuration', () => {
     const originalModule = jest.requireActual('../configuration');
     return {
         ...originalModule,
+
         getLogLevel: jest.fn(() => 'info'),
         getRegistryConfigurations: jest.fn(() => registries),
         getTriggerConfigurations: jest.fn(() => triggers),
         getWatcherConfigurations: jest.fn(() => watchers),
         getAuthenticationConfigurations: jest.fn(() => authentications),
+        onConfigFileChange: jest.fn()
     };
 });
 

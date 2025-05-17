@@ -5,10 +5,9 @@ import passport from 'passport';
 import { v5 as uuidV5 } from 'uuid';
 import getmac from 'getmac';
 import * as store from '../store';
-import * as registry from '../registry';
 import * as states from '../registry/states';
 import log from '../log';
-import { getVersion } from '../configuration';
+import { getVersion, onConfigFileChange } from '../configuration';
 import { Authentication, StrategyDescription } from '../authentications/providers/Authentication';
 
 const LokiStore = connect(session);
@@ -22,7 +21,6 @@ const WUD_NAMESPACE = 'dee41e92-5fc4-460e-beec-528c9ea7d760';
 
 /**
  * Get all strategies id.
- * @returns {[]}
  */
 export function getAllIds() {
     return STRATEGY_IDS;
@@ -129,6 +127,8 @@ function logout(req: Request, res: Response) {
     });
 }
 
+let initialized = false;
+let isChangingConfig = false;
 /**
  * Init auth (passport.js).
  */
@@ -150,6 +150,17 @@ export function init(app: Express) {
         }),
     );
 
+    // Middleware to handle configuration changes, preventing access during changes
+    app.use((_req, res, next) => {
+        if (isChangingConfig) {
+            res.status(503).json({
+                message: 'Service is temporarily unavailable due to configuration changes.',
+            });
+        } else {
+            next();
+        }
+    });
+
     // Init passport middleware
     app.use(passport.initialize());
     app.use(passport.session());
@@ -158,6 +169,22 @@ export function init(app: Express) {
     Object.values(states.getState().authentication).forEach(
         (authentication) => useStrategy(authentication, app),
     );
+
+
+    if (!initialized) {
+        initialized = true;
+        onConfigFileChange(async () => {
+            isChangingConfig = true;
+            getAllIds().forEach((id) => {
+                passport.unuse(id);
+            });
+            STRATEGY_IDS.length = 0; // Clear the array
+            Object.values(states.getState().authentication).forEach(
+                (authentication) => useStrategy(authentication, app),
+            );
+            isChangingConfig = false;
+        });
+    }
 
     passport.serializeUser((user, done) => {
         done(null, JSON.stringify(user));
