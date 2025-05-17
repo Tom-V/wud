@@ -22,7 +22,7 @@ RUN apt update \
     && rm -rf /var/cache/apt/*
 
 # Dependencies stage
-FROM base as dependencies
+FROM base AS dependencies
 
 # Copy app package.json
 COPY app/package* ./
@@ -31,12 +31,9 @@ COPY app/package* ./
 RUN npm ci --omit=dev --omit=optional --no-audit --no-fund --no-update-notifier
 
 # Release stage
-FROM base as release
+FROM base AS release
 
-# Default entrypoint
-COPY Docker.entrypoint.sh /usr/bin/entrypoint.sh
-RUN chmod +x /usr/bin/entrypoint.sh
-ENTRYPOINT ["/usr/bin/entrypoint.sh"]
+# Set the default command to run the app
 CMD ["node", "index"]
 
 ## Copy node_modules

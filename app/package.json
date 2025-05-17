@@ -6,7 +6,7 @@
     "scripts": {
         "build": "tsc --build",
         "build:dev": "tsc --watch",
-        "start": "nodemon index.ts | bunyan -L -o short",
+        "start": "nodemon index.ts",
         "doc": ".docsify serve ./docs",
         "format": "prettier --write .",
         "lint:fix": "prettier --write . && eslint '**/*.ts'",
@@ -21,7 +21,6 @@
         "@slack/web-api": "7.9.1",
         "aws-sdk": "2.1692.0",
         "body-parser": "1.20.3",
-        "bunyan": "1.8.15",
         "capitalize": "2.0.4",
         "connect-loki": "1.2.0",
         "cors": "2.8.5",
@@ -62,7 +61,6 @@
     "devDependencies": {
         "@types/aws-sdk": "^0.0.42",
         "@types/body-parser": "^1.19.5",
-        "@types/bunyan": "^1.8.11",
         "@types/cors": "^2.8.17",
         "@types/dockerode": "^3.3.37",
         "@types/express": "^5.0.1",

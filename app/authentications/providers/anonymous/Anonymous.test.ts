@@ -6,6 +6,8 @@ const configurationValid = {};
 
 beforeEach(() => {
     jest.resetAllMocks();
+    // Mock the log property
+    (anonymous as any).log = { warn: jest.fn() };
 });
 
 test('validateConfiguration should return validated configuration when valid', () => {

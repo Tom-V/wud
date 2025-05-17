@@ -5,7 +5,7 @@ import { getState } from '../../../registry/states';
 import { Container, ContainerImage, fullName } from '../../../model/container';
 import Dockerode, { ContainerCreateOptions, ContainerInspectInfo } from 'dockerode';
 import { Auth, Registry } from '../../../registries/Registry';
-import Logger from 'bunyan';
+import { Logger } from '../../../log';
 
 export interface DockerTriggerConfiguration extends TriggerConfiguration {
     prune: boolean;
@@ -238,8 +238,7 @@ export class Docker<T extends DockerTriggerConfiguration = DockerTriggerConfigur
             );
         } catch (e) {
             logContainer.warn(
-                e,
-                `Error while waiting for container ${containerName} with id ${containerId}`,
+                `Error while waiting for container ${containerName} with id ${containerId}: ${JSON.stringify(e)}`,
             );
             throw e;
         }
@@ -369,7 +368,7 @@ export class Docker<T extends DockerTriggerConfiguration = DockerTriggerConfigur
      */
     async trigger(container: Container) {
         // Child logger for the container to process
-        const logContainer = this.log.child({ container: fullName(container) });
+        const logContainer = this.log.child({ component: fullName(container) });
 
         // Get watcher
         const watcher = this.getWatcher(container);

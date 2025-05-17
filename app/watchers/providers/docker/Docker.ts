@@ -15,7 +15,7 @@ import { Watcher } from '../../Watcher';
 import { validate as validateContainer, fullName, Container } from '../../../model/container';
 import { getState } from '../../../registry/states';
 import { getWatchContainerGauge } from '../../../prometheus/watcher';
-import Logger from 'bunyan';
+import { Logger } from '../../../log';
 
 // The delay before starting the watcher when the app is started
 const START_WATCHER_DELAY_MS = 1000;
@@ -395,7 +395,7 @@ export class Docker extends Watcher<DockerConfiguration> {
                 if (containerFound) {
                     // Child logger for the container to process
                     const logContainer = this.log.child({
-                        container: fullName(containerFound),
+                        component: fullName(containerFound),
                     });
                     const oldStatus = containerFound.status;
                     containerFound.status = newStatus;
@@ -481,7 +481,7 @@ export class Docker extends Watcher<DockerConfiguration> {
      */
     async watchContainer(container: Container) {
         // Child logger for the container to process
-        const logContainer = this.log.child({ container: fullName(container) });
+        const logContainer = this.log.child({ component: fullName(container) });
         const containerWithResult = container;
 
         // Reset previous results if so
@@ -495,7 +495,7 @@ export class Docker extends Watcher<DockerConfiguration> {
                 logContainer,
             );
         } catch (e: any) {
-            logContainer.warn(`Error when processing (${e.message})`);
+            logContainer.warn(`Error when finding new version processing (${e.message}) for container ${container.name}`);
             logContainer.debug(e);
             containerWithResult.error = {
                 message: e.message,
@@ -696,7 +696,7 @@ export class Docker extends Watcher<DockerConfiguration> {
         if (imageNameToParse.includes('sha256:')) {
             if (!image.RepoTags || image.RepoTags.length === 0) {
                 this.log.warn(
-                    `Cannot get a reliable tag for this image [${imageNameToParse}]`,
+                    `Cannot get a reliable tag for this image [${imageNameToParse}} for container ${containerName}`
                 );
                 return Promise.resolve();
             }
@@ -761,7 +761,7 @@ export class Docker extends Watcher<DockerConfiguration> {
      */
     mapContainerToContainerReport(containerWithResult: Container) {
         const logContainer = this.log.child({
-            container: fullName(containerWithResult),
+            component: fullName(containerWithResult),
         });
         const containerReport: { container: Container, changed?: boolean } = {
             container: containerWithResult,
