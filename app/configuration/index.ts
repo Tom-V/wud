@@ -1,5 +1,5 @@
 import joi from "joi";
-import Logger, { createLogger } from 'bunyan';
+import log, { LogLevel, logLevels } from '../log';
 import fs, { StatWatcher } from 'fs';
 import setValue from 'set-value';
 
@@ -38,13 +38,14 @@ function getConfig(): IBaseConfig {
     if (cachedConfig) {
         return cachedConfig;
     }
-    const log = createLogger(
-        {
-            name: 'wud-configuration',
-            level: 'warn',
-        }
-    );
-    const config = processConfigFileOrDefault(log);
+
+    // We already try to set the log level from the environment variable
+    // If the log level is also in the config file, it will be overridden at the end
+    if (process.env.WUD_LOG_LEVEL) {
+        log.setLogLevel(process.env.WUD_LOG_LEVEL as LogLevel);
+    }
+
+    const config = processConfigFileOrDefault();
 
     const wudEnvVars: Record<string, string> = {};
     // 1. Get a copy of all wud related env vars
@@ -95,6 +96,9 @@ function getConfig(): IBaseConfig {
     });
 
     cachedConfig = config;
+
+    // The config file is loaded, now we can set the log level
+    log.setLogLevel(getLogLevel(config));
     return cachedConfig;
 }
 
@@ -115,7 +119,7 @@ function getBaseConfig(): IBaseConfig {
     return config;
 }
 
-function processConfigFileOrDefault(log: Logger): IBaseConfig {
+function processConfigFileOrDefault(): IBaseConfig {
     const config = getBaseConfig();
 
     const defaultConfigFile = './config.json';
@@ -202,10 +206,11 @@ export function getVersion() {
     return getConfig().version;
 }
 
-export function getLogLevel(): Logger.LogLevel {
-    const logLevel = getConfig().log.level;
+export function getLogLevel(baseConfig?: IBaseConfig): LogLevel {
+    const config = baseConfig || getConfig();
+    const logLevel = config.log.level;
     if (logLevel) {
-        return Object.keys(Logger.levelFromName).includes(logLevel) ? logLevel as Logger.LogLevel : 'info'
+        return logLevels.includes(logLevel as LogLevel) ? logLevel as LogLevel : 'info';
     }
     return 'info';
 }

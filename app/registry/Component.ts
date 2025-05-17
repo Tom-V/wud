@@ -1,6 +1,6 @@
 import joi from 'joi';
 import log from '../log';
-import Logger from 'bunyan';
+import { Logger } from '../log';
 
 export type ComponentKind = 'trigger' | 'watcher' | 'registry' | 'authentication';
 

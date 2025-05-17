@@ -1,4 +1,4 @@
-import Logger from 'bunyan';
+import { Logger } from '../../../log'
 import { Client, Strategy, StrategyOptions, StrategyVerifyCallback, TokenSet } from 'openid-client';
 import { Request } from 'express';
 

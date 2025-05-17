@@ -3,7 +3,7 @@ import { getVersion } from '../../../configuration';
 import { registerContainerAdded, registerContainerUpdated, registerContainerRemoved, registerWatcherStart, registerWatcherStop } from '../../../event';
 import * as containerStore from '../../../store/container';
 import { MqttConfiguration } from './MqttConfiguration';
-import Logger from 'bunyan';
+import { Logger } from '../../../log';
 import { Container } from '../../../model/container';
 import { Watcher } from '../../../watchers/Watcher';
 
