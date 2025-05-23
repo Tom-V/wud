@@ -1,4 +1,5 @@
 # Pushover
+
 ![logo](pushover.png)
 
 The `pushover` trigger lets you send realtime notifications to your devices (Android, iPhone...) using the [Pushover Service](https://pushover.net/).
@@ -6,7 +7,7 @@ The `pushover` trigger lets you send realtime notifications to your devices (And
 ### Variables
 
 | Env var                                        | Required       | Description                                                          | Supported values                                                                                   | Default value when missing  |
-|------------------------------------------------|:--------------:|----------------------------------------------------------------------| -------------------------------------------------------------------------------------------------- |-----------------------------| 
+|------------------------------------------------|:--------------:|----------------------------------------------------------------------| -------------------------------------------------------------------------------------------------- |-----------------------------|
 | `WUD_TRIGGER_PUSHOVER_{trigger_name}_DEVICE`   | :white_circle: | Optional device(s) to notify                                         | Coma separated list of devices (e.g. dev1,dev2) ([see here](https://pushover.net/api#identifiers)) |                             |
 | `WUD_TRIGGER_PUSHOVER_{trigger_name}_EXPIRE`   | :white_circle: | Optional notification expire in seconds (only when priority=2)       | [see here](https://pushover.net/api#priority)                                                      |                             |
 | `WUD_TRIGGER_PUSHOVER_{trigger_name}_HTML`     | :white_circle: | Allow HTML formatting in message body (supported in Pushover 2.3+)   | [see here](https://pushover.net/api#html)                                                          | `0`                         |
@@ -17,15 +18,16 @@ The `pushover` trigger lets you send realtime notifications to your devices (And
 | `WUD_TRIGGER_PUSHOVER_{trigger_name}_TTL`      | :white_circle: | Optional message time to live (in seconds)                           | [see here](https://pushover.net/api#ttl)                                                           |                             |
 | `WUD_TRIGGER_PUSHOVER_{trigger_name}_USER`     | :red_circle:   | The User key                                                         |                                                                                                    |                             |
 
-
 ?> This trigger also supports the [common configuration variables](configuration/triggers/?id=common-trigger-configuration).
 
 ### Examples
 
 #### Configuration
+
 ##### Minimal
 <!-- tabs:start -->
 #### **Docker Compose**
+
 ```yaml
 services:
   whatsupdocker:
@@ -37,6 +39,7 @@ services:
 ```
 
 #### **Docker**
+
 ```bash
 docker run \
   -e WUD_TRIGGER_PUSHOVER_1_TOKEN="*****************************" \
@@ -49,6 +52,7 @@ docker run \
 ##### Full
 <!-- tabs:start -->
 #### **Docker Compose**
+
 ```yaml
 services:
   whatsupdocker:
@@ -65,6 +69,7 @@ services:
 ```
 
 #### **Docker**
+
 ```bash
 docker run \
     -e WUD_TRIGGER_PUSHOVER_1_TOKEN="*****************************" \
@@ -80,15 +85,19 @@ docker run \
 <!-- tabs:end -->
 
 ### How to get the User key
+
 [Click here](https://pushover.net/settings)
 
 The key is printed under the section `Reset User Key`.
 
 ### How to get an API token
+
 #### Register a new application
+
 [Click here](https://pushover.net/apps/build)
 
 ![image](pushover_register.png)
 
 #### Copy the API token
+
 ![image](pushover_api_token.png)
