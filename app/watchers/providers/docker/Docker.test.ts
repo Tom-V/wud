@@ -177,11 +177,11 @@ describe('Docker Watcher', () => {
 
         test('should schedule cron job on init', async () => {
             await docker.register('watcher', 'docker', 'test', {
-                cron: '0 * * * *',
+               cron: '0 20 * * *',
             });
             docker.init();
             expect(mockCron.schedule).toHaveBeenCalledWith(
-                '0 * * * *',
+                '0 20 * * *',
                 expect.any(Function),
                 { maxRandomDelay: 60000 },
             );
