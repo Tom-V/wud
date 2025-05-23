@@ -1,10 +1,11 @@
 # Watcher API
-This API allows to query the state of the watchers.
 
+This API allows to query the state of the watchers.
 
 ?> [Need to add a new Watcher?](/configuration/watchers/)
 
 ## Get all Watchers
+
 This operation lets you get all the configured watchers.
 
 ```bash
@@ -18,7 +19,7 @@ curl http://wud:3000/api/watchers
       "configuration":{
          "socket":"/var/run/docker.sock",
          "port":2375,
-         "cron":"0 * * * *",
+         "cron":"0 20 * * *",
          "watchbydefault":true
       }
    }
@@ -26,6 +27,7 @@ curl http://wud:3000/api/watchers
 ```
 
 ## Get a Watcher by id
+
 This operation lets you get a specific Watcher.
 
 ```bash
@@ -39,10 +41,9 @@ curl http://wud:3000/api/watchers/docker/local
       "configuration":{
          "socket":"/var/run/docker.sock",
          "port":2375,
-         "cron":"0 * * * *",
+         "cron":"0 20 * * *",
          "watchbydefault":true
       }
    }
 ]
 ```
-

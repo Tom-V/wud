@@ -1,4 +1,5 @@
 # Docker Watchers
+
 ![logo](docker.png)
 
 Watchers are responsible for scanning Docker containers.
@@ -8,10 +9,10 @@ The ```docker``` watcher lets you configure the Docker hosts you want to watch.
 ## Variables
 
 | Env var                                                   | Required       | Description                                                     | Supported values                               | Default value when missing                                      |
-| --------------------------------------------------------- |:--------------:| --------------------------------------------------------------- | ---------------------------------------------- | --------------------------------------------------------------- | 
+| --------------------------------------------------------- |:--------------:| --------------------------------------------------------------- | ---------------------------------------------- | --------------------------------------------------------------- |
 | `WUD_WATCHER_{watcher_name}_CAFILE`                       | :white_circle: | CA pem file path (only for TLS connection)                      |                                                |                                                                 |
 | `WUD_WATCHER_{watcher_name}_CERTFILE`                     | :white_circle: | Certificate pem file path (only for TLS connection)             |                                                |                                                                 |
-| `WUD_WATCHER_{watcher_name}_CRON`                         | :white_circle: | Scheduling options                                              | [Valid CRON expression](https://crontab.guru/) | `0 * * * *` (every hour)                                        |
+| `WUD_WATCHER_{watcher_name}_CRON`                         | :white_circle: | Scheduling options                                              | [Valid CRON expression](https://crontab.guru/) | `0 20 * * *` (every day at 8pm)                                        |
 | `WUD_WATCHER_{watcher_name}_HOST`                         | :white_circle: | Docker hostname or ip of the host to watch                      |                                                |                                                                 |
 | `WUD_WATCHER_{watcher_name}_KEYFILE`                      | :white_circle: | Key pem file path (only for TLS connection)                     |                                                |                                                                 |
 | `WUD_WATCHER_{watcher_name}_PORT`                         | :white_circle: | Docker port of the host to watch                                |                                                | `2375`                                                          |
@@ -47,6 +48,7 @@ If you face [quota related errors](https://docs.docker.com/docker-hub/download-r
 
 <!-- tabs:start -->
 #### **Docker Compose**
+
 ```yaml
 services:
   whatsupdocker:
@@ -57,6 +59,7 @@ services:
 ```
 
 #### **Docker**
+
 ```bash
 docker run \
     -e WUD_WATCHER_LOCAL_CRON="0 1 * * *" \
@@ -69,6 +72,7 @@ docker run \
 
 <!-- tabs:start -->
 #### **Docker Compose**
+
 ```yaml
 services:
   whatsupdocker:
@@ -79,6 +83,7 @@ services:
 ```
 
 #### **Docker**
+
 ```bash
 docker run \
     -e WUD_WATCHER_LOCAL_WATCHALL="true" \
@@ -91,6 +96,7 @@ docker run \
 
 <!-- tabs:start -->
 #### **Docker Compose**
+
 ```yaml
 services:
   whatsupdocker:
@@ -101,6 +107,7 @@ services:
 ```
 
 #### **Docker**
+
 ```bash
 docker run \
     -e WUD_WATCHER_MYREMOTEHOST_HOST="myremotehost" \
@@ -113,6 +120,7 @@ docker run \
 
 <!-- tabs:start -->
 #### **Docker Compose**
+
 ```yaml
 services:
   whatsupdocker:
@@ -131,6 +139,7 @@ services:
 ```
 
 #### **Docker**
+
 ```bash
 docker run \
     -e WUD_WATCHER_MYREMOTEHOST_HOST="myremotehost" \
@@ -152,6 +161,7 @@ docker run \
 
 <!-- tabs:start -->
 #### **Docker Compose**
+
 ```yaml
 services:
   whatsupdocker:
@@ -164,6 +174,7 @@ services:
 ```
 
 #### **Docker**
+
 ```bash
 docker run \
     -e  WUD_WATCHER_LOCAL_SOCKET="/var/run/docker.sock" \
@@ -194,9 +205,11 @@ To fine-tune the behaviour of WUD _per container_, you can add labels on them.
 ## Label examples
 
 ### Include specific containers to watch
+
 Configure WUD to disable WATCHBYDEFAULT feature.
 <!-- tabs:start -->
 #### **Docker Compose**
+
 ```yaml
 services:
   whatsupdocker:
@@ -207,6 +220,7 @@ services:
 ```
 
 #### **Docker**
+
 ```bash
 docker run \
     -e WUD_WATCHER_LOCAL_WATCHBYDEFAULT="false" \
@@ -218,6 +232,7 @@ docker run \
 Then add the `wud.watch=true` label on the containers you want to watch.
 <!-- tabs:start -->
 #### **Docker Compose**
+
 ```yaml
 services:
   mariadb:
@@ -228,17 +243,20 @@ services:
 ```
 
 #### **Docker**
+
 ```bash
 docker run -d --name mariadb --label wud.watch=true mariadb:10.4.5
 ```
 <!-- tabs:end -->
 
 ### Exclude specific containers to watch
+
 Ensure `WUD_WATCHER_{watcher_name}_WATCHBYDEFAULT` is true (default value).
 
 Then add the `wud.watch=false` label on the containers you want to exclude from being watched.
 <!-- tabs:start -->
 #### **Docker Compose**
+
 ```yaml
 services:
   mariadb:
@@ -249,17 +267,20 @@ services:
 ```
 
 #### **Docker**
+
 ```bash
 docker run -d --name mariadb --label wud.watch=false mariadb:10.4.5
 ```
 <!-- tabs:end -->
 
 ### Include only 3 digits semver tags
+
 You can filter (by inclusion or exclusion) which versions can be candidates for update.
 
 For example, you can indicate that you want to watch x.y.z versions only
 <!-- tabs:start -->
 #### **Docker Compose**
+
 ```yaml
 services:
 
@@ -270,12 +291,14 @@ services:
 ```
 
 #### **Docker**
+
 ```bash
 docker run -d --name mariadb --label 'wud.tag.include=^\d+\.\d+\.\d+$' mariadb:10.4.5
 ```
 <!-- tabs:end -->
 
 ### Transform the tags before performing the analysis
+
 In certain cases, tag values are so badly formatted that the resolution algorithm cannot find any valid update candidates or, worst, find bad positive matches.
 
 For example, you can encounter such an issue if you need to deal with tags looking like `1.0.0-99-7b368146`, `1.0.0-273-21d7efa6`...  
@@ -286,22 +309,25 @@ You can get around this issue by providing a function that keeps only the part y
 
 How does it work?  
 The transform function must follow the following syntax:
+
 ```
 $valid_regex_with_capturing_groups => $valid_string_with_placeholders
 ```
 
 For example:
+
 ```bash
 ^(\d+\.\d+\.\d+-\d+)-.*$ => $1
 ```
 
-The capturing groups are accessible with the syntax `$1`, `$2`, `$3`.... 
+The capturing groups are accessible with the syntax `$1`, `$2`, `$3`....
 
-!> The first capturing group is accessible as `$1`! 
+!> The first capturing group is accessible as `$1`!
 
 For example, you can indicate that you want to watch x.y.z versions only
 <!-- tabs:start -->
 #### **Docker Compose**
+
 ```yaml
 services:
 
@@ -313,6 +339,7 @@ services:
 ```
 
 #### **Docker**
+
 ```bash
 docker run -d --name searx \
 --label 'wud.tag.include=^\d+\.\d+\.\d+-\d+-.*$' \
@@ -322,11 +349,13 @@ searx/searx:1.0.0-269-7b368146
 <!-- tabs:end -->
 
 ### Enable digest watching
+
 Additionally to semver tag tracking, you can also track if the digest associated to the local tag has been updated.  
 It can be convenient to monitor image tags known to be overridden (`latest`, `10`, `10.6`...)
 
 <!-- tabs:start -->
 #### **Docker Compose**
+
 ```yaml
 services:
 
@@ -336,19 +365,23 @@ services:
       - wud.tag.include=^\d+$$
       - wud.watch.digest=true
 ```
+
 #### **Docker**
+
 ```bash
 docker run -d --name mariadb --label 'wud.tag.include=^\d+$' --label wud.watch.digest=true mariadb:10
 ```
 <!-- tabs:end -->
 
 ### Associate a link to the container version
+
 You can associate a browsable link to the container version using a templated string.
-For example, if you want to associate a mariadb version to a changelog (e.g. https://mariadb.com/kb/en/mariadb-1064-changelog),
+For example, if you want to associate a mariadb version to a changelog (e.g. <https://mariadb.com/kb/en/mariadb-1064-changelog>),
 
 you would specify a template like `https://mariadb.com/kb/en/mariadb-${major}${minor}${patch}-changelog`
 
 The available variables are:
+
 - `${original}` the original unparsed tag
 - `${transformed}` the original unparsed tag transformed with the optional `wud.tag.transform` label option
 - `${major}` the major version (if tag value is semver)
@@ -358,6 +391,7 @@ The available variables are:
 
 <!-- tabs:start -->
 #### **Docker Compose**
+
 ```yaml
 services:
 
@@ -368,15 +402,18 @@ services:
 ```
 
 #### **Docker**
+
 ```bash
 docker run -d --name mariadb --label 'wud.link.template=https://mariadb.com/kb/en/mariadb-${major}${minor}${patch}-changelog' mariadb:10
 ```
 <!-- tabs:end -->
 
 ### Customize the name and the icon to display
+
 You can customize the name & the icon of a container (displayed in the UI, in Home-Assistant...)
 
 Icons must be prefixed with:
+
 - `fab:` or `fab-` for [Fontawesome brand icons](https://fontawesome.com/) (`fab:github`, `fab-mailchimp`...)
 - `far:` or `far-` for [Fontawesome regular icons](https://fontawesome.com/) (`far:heart`, `far-house`...)
 - `fas:` or `fas-` for [Fontawesome solid icons](https://fontawesome.com/) (`fas:heart`, `fas-house`...)
@@ -389,6 +426,7 @@ Icons must be prefixed with:
 
 <!-- tabs:start -->
 #### **Docker Compose**
+
 ```yaml
 services:
 
@@ -400,18 +438,21 @@ services:
 ```
 
 #### **Docker**
+
 ```bash
 docker run -d --name mariadb --label 'wud.display.name=Maria DB' --label 'wud.display.icon=mdi-database' mariadb:10.6.4
 ```
 <!-- tabs:end -->
 
 ### Assign different triggers to containers
+
 You can assign different triggers and thresholds on a per container basis.
 
 #### Example send a mail notification for all updates but auto-update only if minor or patch
 
 <!-- tabs:start -->
 #### **Docker Compose**
+
 ```yaml
 services:
 
@@ -422,6 +463,7 @@ services:
 ```
 
 #### **Docker**
+
 ```bash
 docker run -d --name my_important_service --label 'wud.trigger.include=smtp.gmail,dockercompose.local:minor' my_important_service:1.0.0
 ```
@@ -431,7 +473,7 @@ docker run -d --name my_important_service --label 'wud.trigger.include=smtp.gmai
 
 ?> Threshold `all` means that the trigger will run regardless of the nature of the change
 
-?> Threshold `major` means that the trigger will run only if this is a `major`, `minor` or `patch` semver change 
+?> Threshold `major` means that the trigger will run only if this is a `major`, `minor` or `patch` semver change
 
 ?> Threshold `minor` means that the trigger will run only if this is a `minor` or `patch` semver change
 

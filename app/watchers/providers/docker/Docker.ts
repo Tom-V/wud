@@ -253,7 +253,7 @@ export class Docker extends Watcher<DockerConfiguration> {
             cafile: this.joi.string(),
             certfile: this.joi.string(),
             keyfile: this.joi.string(),
-            cron: joi.string().cron().default('0 * * * *'),
+            cron: joi.string().cron().default('0 20 * * *'),
             watchbydefault: this.joi.boolean().default(true),
             watchall: this.joi.boolean().default(false),
             watchdigest: this.joi.any(),
