@@ -384,7 +384,7 @@ export class Docker extends Watcher<DockerConfiguration> {
 
         // If the container was created or destroyed => perform a watch
         if (action === 'destroy' || action === 'create') {
-            this.watchCronDebounced!();
+            this.watchCronDebounced?.();
         } else {
             // Update container state in db if so
             try {
