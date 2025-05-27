@@ -1,8 +1,6 @@
+import axios from 'axios';
+jest.mock('axios');
 import { ValidationError } from 'joi';
-import rp from 'request-promise-native';
-
-jest.mock('request-promise-native');
-
 import { Ifttt, IftttConfiguration } from './Ifttt';
 import { Container } from '../../../model/container';
 
@@ -71,8 +69,8 @@ test('trigger should send http request to IFTTT', async () => {
         },
     } as Container;
     await ifttt.trigger(container);
-    expect(rp).toHaveBeenCalledWith({
-        body: {
+    expect(axios).toHaveBeenCalledWith({
+        data: {
             value1: 'container1',
             value2: '2.0.0',
             value3: '{"name":"container1","result":{"tag":"2.0.0"}}',
@@ -81,7 +79,6 @@ test('trigger should send http request to IFTTT', async () => {
             'Content-Type': 'application/json',
         },
         method: 'POST',
-        json: true,
-        uri: 'https://maker.ifttt.com/trigger/event/with/key/key',
+        url: 'https://maker.ifttt.com/trigger/event/with/key/key',
     });
 });

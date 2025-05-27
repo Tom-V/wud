@@ -1,9 +1,8 @@
 import { ValidationError } from 'joi';
-import rp from 'request-promise-native';
-
-jest.mock('request-promise-native');
 import { Apprise, AppriseConfig } from './Apprise';
 import { Container } from '../../../model/container';
+import axios from 'axios';
+jest.mock('axios');
 
 const apprise = new Apprise();
 
@@ -74,16 +73,15 @@ test('trigger should send POST http request to notify endpoint', async () => {
         },
     } as Container;
     await apprise.trigger(container);
-    expect(rp).toHaveBeenCalledWith({
-        body: {
+    expect(axios).toHaveBeenCalledWith({
+        data: {
             urls: 'maito://user:pass@gmail.com',
             title: 'New tag found for container container1',
             body: 'Container container1 running with tag 1.0.0 can be updated to tag 2.0.0',
             format: 'text',
             type: 'info',
         },
-        json: true,
         method: 'POST',
-        uri: 'http://xxx.com/notify',
+        url: 'http://xxx.com/notify',
     });
 });

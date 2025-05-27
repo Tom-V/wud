@@ -1,6 +1,6 @@
-import rp from 'request-promise-native';
 import { Trigger, TriggerConfiguration } from '../Trigger';
 import { Container } from '../../../model/container';
+import axios from 'axios';
 
 export interface AppriseConfig extends TriggerConfiguration {
     url: string;
@@ -74,11 +74,10 @@ export class Apprise extends Trigger<AppriseConfig> {
         }
         const options = {
             method: 'POST',
-            json: true,
-            uri,
-            body,
+            url: uri,
+            data: body,
         };
-        return rp(options);
+        await axios(options);
     }
 
     /**
@@ -88,9 +87,8 @@ export class Apprise extends Trigger<AppriseConfig> {
     async triggerBatch(containers: Container[]) {
         const options = {
             method: 'POST',
-            uri: `${this.configuration.url}/notify`,
-            json: true,
-            body: {
+            url: `${this.configuration.url}/notify`,
+            data: {
                 urls: this.configuration.urls,
                 title: this.renderBatchTitle(containers),
                 body: this.renderBatchBody(containers),
@@ -98,7 +96,7 @@ export class Apprise extends Trigger<AppriseConfig> {
                 type: 'info',
             },
         };
-        return rp(options);
+        await axios(options);
     }
 }
 

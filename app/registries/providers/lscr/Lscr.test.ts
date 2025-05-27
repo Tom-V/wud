@@ -2,19 +2,11 @@ import { ContainerImage } from '../../../model/container';
 import { GhcrConfiguration } from '../ghcr/Ghcr';
 import { Lscr } from './Lscr';
 
-jest.mock('request-promise-native', () =>
-    jest.fn().mockImplementation(() => ({
-        token: 'xxxxx',
-    })),
-);
-
 const lscr = new Lscr();
 lscr.configuration = {
     username: 'user',
     token: 'token',
 };
-
-jest.mock('request-promise-native');
 
 test('validatedConfiguration should initialize when configuration is valid', () => {
     expect(

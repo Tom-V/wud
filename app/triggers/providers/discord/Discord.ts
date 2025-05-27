@@ -1,6 +1,6 @@
-import rp from 'request-promise-native';
 import { Trigger, TriggerConfiguration } from '../Trigger';
 import { Container } from '../../../model/container';
+import axios from 'axios';
 
 export interface DiscordConfiguration extends TriggerConfiguration {
     url: string;
@@ -69,29 +69,24 @@ export class Discord extends Trigger<DiscordConfiguration> {
      * @param bodyText the text to post
      */
     async sendMessage(title: string, bodyText: string) {
-        const uri = this.configuration.url;
-        const body = {
-            username: this.configuration.botusername,
-            embeds: [
-                {
-                    title,
-                    color: this.configuration.cardcolor,
-                    fields: [
-                        {
-                            name: this.configuration.cardlabel,
-                            value: bodyText,
-                        },
-                    ],
-                },
-            ],
-        };
-
-        const options = {
+        await axios({
             method: 'POST',
-            json: true,
-            uri,
-            body,
-        };
-        return rp(options);
+            url: this.configuration.url,
+            data: {
+                username: this.configuration.botusername,
+                embeds: [
+                    {
+                        title,
+                        color: this.configuration.cardcolor,
+                        fields: [
+                            {
+                                name: this.configuration.cardlabel,
+                                value: bodyText,
+                            },
+                        ],
+                    },
+                ],
+            },
+        });
     }
 }

@@ -1,7 +1,8 @@
-import rp, { OptionsWithUrl, RequestPromiseOptions } from 'request-promise-native';
 import { Trigger, TriggerConfiguration } from '../Trigger';
 import { Container } from '../../../model/container';
 import { UriOptions } from 'request';
+import axios, { AxiosRequestConfig } from 'axios';
+import { URL } from 'url';
 
 export interface HttpConfiguration extends TriggerConfiguration {
     url: string;
@@ -62,31 +63,35 @@ export class Http extends Trigger<HttpConfiguration> {
 
     async sendHttpRequest(body: Container | Container[]) {
         const url = this.configuration.url;
-        const options: RequestPromiseOptions & UriOptions = {
+        const options: AxiosRequestConfig = {
             method: this.configuration.method,
-            uri: url,
+            url: url,
         };
         if (this.configuration.method === 'POST') {
-            options.body = body;
-            options.json = true;
+            options.data = body;
         } else if (this.configuration.method === 'GET') {
-            options.qs = body;
+            options.params = body;
         }
         if (this.configuration.auth) {
             if (this.configuration.auth.type === 'BASIC') {
                 options.auth = {
-                    user: this.configuration.auth.user,
-                    pass: this.configuration.auth.password,
+                    username: this.configuration.auth.user!,
+                    password: this.configuration.auth.password!,
                 };
             } else if (this.configuration.auth.type === 'BEARER') {
-                options.auth = {
-                    bearer: this.configuration.auth.bearer,
-                };
+                options.headers = options.headers || {};
+                options.headers!.Authorization = `Bearer ${this.configuration.auth.bearer}`;
             }
         }
         if (this.configuration.proxy) {
-            options.proxy = this.configuration.proxy;
+            const proxyUrl = new URL(this.configuration.proxy);
+
+            options.proxy = {
+                host: proxyUrl.hostname,
+                port: parseInt(proxyUrl.port, 10),
+                protocol: proxyUrl.protocol.replace(':', ''),
+            };
         }
-        return rp(options);
+        return axios(options);
     }
 }

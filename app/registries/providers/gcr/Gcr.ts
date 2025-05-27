@@ -1,6 +1,6 @@
-import rp, { RequestPromiseOptions } from 'request-promise-native';
 import { Registry } from '../../Registry';
 import { ContainerImage } from '../../../model/container';
+import axios, { AxiosRequestConfig } from 'axios';
 
 export interface GcrConfiguration {
     clientemail: string;
@@ -54,13 +54,13 @@ export class Gcr extends Registry<GcrConfiguration> {
         return imageNormalized;
     }
 
-    async authenticate(image: ContainerImage, requestOptions: RequestPromiseOptions) {
+    async authenticate(image: ContainerImage, requestOptions: AxiosRequestConfig) {
         if (!this.configuration.clientemail) {
             return requestOptions;
         }
         const request = {
             method: 'GET',
-            uri: `https://gcr.io/v2/token?scope=repository:${image.name}:pull`,
+            url: `https://gcr.io/v2/token?scope=repository:${image.name}:pull`,
             headers: {
                 Accept: 'application/json',
                 Authorization: `Basic ${Gcr.base64Encode(
@@ -71,12 +71,11 @@ export class Gcr extends Registry<GcrConfiguration> {
                     }),
                 )}`,
             },
-            json: true,
         };
 
-        const response = await rp(request);
+        const response = await axios(request);
         const requestOptionsWithAuth = requestOptions;
-        requestOptionsWithAuth.headers!.Authorization = `Bearer ${response.token}`;
+        requestOptionsWithAuth.headers!.Authorization = `Bearer ${response.data.token}`;
         return requestOptionsWithAuth;
     }
 

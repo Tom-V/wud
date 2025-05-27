@@ -1,9 +1,8 @@
 import { ValidationError } from 'joi';
-import rp from 'request-promise-native';
 import { Ntfy, NtfyConfiguration } from './Ntfy';
 import { Container } from '../../../model/container';
-
-jest.mock('request-promise-native');
+import axios from 'axios';
+jest.mock('axios');
 
 const ntfy = new Ntfy();
 
@@ -54,8 +53,8 @@ test('trigger should call http client', async () => {
         },
     } as Container;
     await ntfy.trigger(container);
-    expect(rp).toHaveBeenCalledWith({
-        body: {
+    expect(axios).toHaveBeenCalledWith({
+        data: {
             message:
                 'Container container1 running with tag 1.0.0 can be updated to tag 2.0.0',
             priority: 2,
@@ -66,8 +65,7 @@ test('trigger should call http client', async () => {
             'Content-Type': 'application/json',
         },
         method: 'POST',
-        json: true,
-        uri: 'http://xxx.com',
+        url: 'http://xxx.com',
     });
 });
 
@@ -85,8 +83,8 @@ test('trigger should use basic auth when configured like that', async () => {
         },
     } as Container;
     await ntfy.trigger(container);
-    expect(rp).toHaveBeenCalledWith({
-        body: {
+    expect(axios).toHaveBeenCalledWith({
+        data: {
             message:
                 'Container container1 running with tag 1.0.0 can be updated to tag 2.0.0',
             priority: 2,
@@ -97,9 +95,8 @@ test('trigger should use basic auth when configured like that', async () => {
             'Content-Type': 'application/json',
         },
         method: 'POST',
-        json: true,
-        uri: 'http://xxx.com',
-        auth: { user: 'user', pass: 'pass' },
+        url: 'http://xxx.com',
+        auth: { username: 'user', password: 'pass' },
     });
 });
 
@@ -117,8 +114,8 @@ test('trigger should use bearer auth when configured like that', async () => {
         },
     } as Container;
     await ntfy.trigger(container);
-    expect(rp).toHaveBeenCalledWith({
-        body: {
+    expect(axios).toHaveBeenCalledWith({
+        data: {
             message:
                 'Container container1 running with tag 1.0.0 can be updated to tag 2.0.0',
             priority: 2,
@@ -127,10 +124,9 @@ test('trigger should use bearer auth when configured like that', async () => {
         },
         headers: {
             'Content-Type': 'application/json',
+            'Authorization': 'Bearer token'
         },
         method: 'POST',
-        json: true,
-        uri: 'http://xxx.com',
-        auth: { bearer: 'token' },
+        url: 'http://xxx.com',
     });
 });

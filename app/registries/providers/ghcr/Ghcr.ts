@@ -1,4 +1,4 @@
-import { RequestPromiseOptions } from 'request-promise-native';
+import { AxiosRequestConfig } from 'axios';
 import { ContainerImage } from '../../../model/container';
 import { Registry } from '../../Registry';
 import { AnySchema } from 'joi';
@@ -54,7 +54,7 @@ export class Ghcr extends Registry<GhcrConfiguration> {
         return imageNormalized;
     }
 
-    async authenticate(image: ContainerImage, requestOptions: RequestPromiseOptions) {
+    async authenticate(image: ContainerImage, requestOptions: AxiosRequestConfig) {
         const requestOptionsWithAuth = requestOptions;
         const bearer = Buffer.from(
             this.configuration.token ? this.configuration.token : ':',
