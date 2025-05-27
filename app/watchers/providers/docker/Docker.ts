@@ -378,7 +378,13 @@ export class Docker extends Watcher<DockerConfiguration> {
      * Process a docker event.
      */
     async onDockerEvent(dockerEventChunk: string) {
-        const dockerEvent = JSON.parse(dockerEventChunk.toString());
+        let dockerEvent: any;
+        try {
+            dockerEvent = JSON.parse(dockerEventChunk.toString());
+        } catch (e: any) {
+            this.log.error(`failed to parse docker event, skipping event: ${dockerEventChunk}`);
+            return;
+        }
         const action = dockerEvent.Action;
         const containerId = dockerEvent.id;
 

@@ -1,4 +1,4 @@
-import { RequestPromiseOptions } from 'request-promise-native';
+import { AxiosRequestConfig } from 'axios';
 import { ContainerImage } from '../../../model/container';
 import { Registry } from '../../Registry';
 
@@ -52,7 +52,7 @@ export class Acr extends Registry<AcrConfiguration> {
         return imageNormalized;
     }
 
-    async authenticate(_image: ContainerImage, requestOptions: RequestPromiseOptions) {
+    async authenticate(_image: ContainerImage, requestOptions: AxiosRequestConfig) {
         const requestOptionsWithAuth = requestOptions;
         requestOptionsWithAuth.headers!.Authorization = `Basic ${Acr.base64Encode(this.configuration.clientid, this.configuration.clientsecret)}`;
         return requestOptionsWithAuth;

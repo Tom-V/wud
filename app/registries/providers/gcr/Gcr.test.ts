@@ -1,19 +1,12 @@
 import { ContainerImage } from '../../../model/container';
 import { Gcr, GcrConfiguration } from './Gcr';
 
-jest.mock('request-promise-native', () =>
-    jest.fn().mockImplementation(() => ({
-        token: 'xxxxx',
-    })),
-);
 
 const gcr = new Gcr();
 gcr.configuration = {
     clientemail: 'accesskeyid',
     privatekey: 'secretaccesskey',
 };
-
-jest.mock('request-promise-native');
 
 test('validatedConfiguration should initialize when configuration is valid', () => {
     expect(

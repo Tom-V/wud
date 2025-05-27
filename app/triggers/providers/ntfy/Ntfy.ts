@@ -1,7 +1,6 @@
-import rp, { RequestPromiseOptions } from 'request-promise-native';
 import { Trigger, TriggerConfiguration } from '../Trigger';
 import { Container } from '../../../model/container';
-import { RequiredUriUrl } from 'request';
+import axios, { AxiosRequestConfig } from 'axios';
 
 export interface NtfyConfiguration extends TriggerConfiguration {
     url: string;
@@ -86,14 +85,13 @@ export class Ntfy extends Trigger<NtfyConfiguration> {
      * @returns {Promise<*>}
      */
     async sendHttpRequest(body: any) {
-        const options: RequestPromiseOptions & RequiredUriUrl = {
+        const options: AxiosRequestConfig = {
             method: 'POST',
-            uri: this.configuration.url,
+            url: this.configuration.url,
             headers: {
                 'Content-Type': 'application/json',
             },
-            body,
-            json: true,
+            data: body,
         };
         if (
             this.configuration.auth &&
@@ -101,15 +99,13 @@ export class Ntfy extends Trigger<NtfyConfiguration> {
             this.configuration.auth.password
         ) {
             options.auth = {
-                user: this.configuration.auth.user,
-                pass: this.configuration.auth.password,
+                username: this.configuration.auth.user,
+                password: this.configuration.auth.password,
             };
         }
         if (this.configuration.auth && this.configuration.auth.token) {
-            options.auth = {
-                bearer: this.configuration.auth.token,
-            };
+            options.headers!.Authorization = `Bearer ${this.configuration.auth.token}`;
         }
-        return rp(options);
+        await axios(options);
     }
 }

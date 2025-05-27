@@ -1,11 +1,11 @@
-import rp, { RequestPromise } from 'request-promise-native';
 import { Quay, QuayConfiguration } from './Quay';
 import log from '../../../log';
 import { ContainerImage } from '../../../model/container';
+import axios from 'axios';
 
-jest.mock('request-promise-native');
-(rp as unknown as jest.Mock).mockImplementation((): Promise<{ token: string }> => Promise.resolve({
-    token: 'token',
+jest.mock('axios');
+(axios as unknown as jest.Mock).mockImplementation((): Promise<{ data: { token: string } }> => Promise.resolve({
+    data: { token: 'token' },
 }));
 
 const quay = new Quay();

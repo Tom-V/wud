@@ -1,9 +1,9 @@
-import rp, { RequestPromiseOptions } from 'request-promise-native';
 import log from '../log';
 import { Component, ComponentKind, BaseConfig } from '../registry/Component';
 import { getSummaryTags } from '../prometheus/registry';
 import { ContainerImage } from '../model/container';
 import { RequestPart } from 'request';
+import axios, { AxiosRequestConfig, AxiosResponse } from 'axios';
 
 /**
  * Docker Registry Abstract class.
@@ -51,7 +51,7 @@ export class Registry<TConfig extends BaseConfig = {}> extends Component<TConfig
     /**
      * Authenticate and set authentication value to requestOptions.
      */
-    async authenticate(image: ContainerImage, requestOptions: RequestPromiseOptions) {
+    async authenticate(_image: ContainerImage, requestOptions: AxiosRequestConfig) {
         return requestOptions;
     }
 
@@ -63,16 +63,16 @@ export class Registry<TConfig extends BaseConfig = {}> extends Component<TConfig
     async getTags(image: ContainerImage) {
         this.log.debug(`Get ${image.name} tags`);
         const tags = [];
-        let page: Request<DockerRegistryTags> | undefined = undefined;
+        let page: AxiosResponse<DockerRegistryTags> | undefined = undefined;
         let hasNext = true;
         let link: string | undefined;
         while (hasNext) {
             const lastItem = page
-                ? page.body.tags[page.body.tags.length - 1]
+                ? page.data.tags[page.data.tags.length - 1]
                 : undefined;
 
             page = await this.getTagsPage(image, lastItem, link);
-            const pageTags = page.body.tags ? page.body.tags : [];
+            const pageTags = page.data.tags ? page.data.tags : [];
             link = page.headers['link'];
             hasNext = link !== undefined;
             tags.push(...pageTags);
@@ -93,7 +93,7 @@ export class Registry<TConfig extends BaseConfig = {}> extends Component<TConfig
         // Default items per page (not honoured by all registries)
         const itemsPerPage = 1000;
         const last = lastItem ? `&last=${lastItem}` : '';
-        return this.callRegistry<Request<DockerRegistryTags>>({
+        return this.callRegistry<DockerRegistryTags>({
             image,
             url: `${image.registry.url}/${image.name}/tags/list?n=${itemsPerPage}${last}`,
             resolveWithFullResponse: true,
@@ -247,6 +247,24 @@ export class Registry<TConfig extends BaseConfig = {}> extends Component<TConfig
         throw new Error('Unexpected error; no manifest found');
     }
 
+
+    // Add overloads to specify return type based on resolveWithFullResponse
+    // When resolveWithFullResponse is false, return type is T (default)
+    // When resolveWithFullResponse is true, return type is AxiosResponse<T>
+    async callRegistry<T>(params: {
+        image: ContainerImage;
+        url: string;
+        method?: string;
+        headers?: any;
+        resolveWithFullResponse?: false;
+    }): Promise<T>;
+    async callRegistry<T>(params: {
+        image: ContainerImage;
+        url: string;
+        method?: string;
+        headers?: any;
+        resolveWithFullResponse: true;
+    }): Promise<AxiosResponse<T>>;
     async callRegistry<T>({
         image,
         url,
@@ -261,28 +279,28 @@ export class Registry<TConfig extends BaseConfig = {}> extends Component<TConfig
         method?: string;
         headers?: any;
         resolveWithFullResponse?: boolean;
-    }) {
+    }): Promise<T | AxiosResponse<T>> {
         const start = new Date().getTime();
 
         // Request options
-        const getRequestOptions: RequestPromiseOptions = {
+        const getRequestOptions: AxiosRequestConfig = {
             method,
             headers,
-            json: true,
-            resolveWithFullResponse,
         };
 
         const getRequestOptionsWithAuth = await this.authenticate(
             image,
             getRequestOptions,
         );
-        const response = await rp(url, getRequestOptionsWithAuth);
+        const response = await axios<T>(url, getRequestOptionsWithAuth);
         const end = new Date().getTime();
         getSummaryTags().observe(
             { type: this.type, name: this.name },
             (end - start) / 1000,
         );
-        return response as T;
+
+        if (resolveWithFullResponse) return response;
+        return response.data;
     }
 
     getImageFullName(image: ContainerImage, tagOrDigest: string) {
@@ -343,11 +361,6 @@ interface DockerPlatform {
     os: string;
     variant: string;
     features?: string[];
-}
-
-export interface Request<T> {
-    headers: Record<string, string>;
-    body: T;
 }
 
 export interface DockerRegistryTags {

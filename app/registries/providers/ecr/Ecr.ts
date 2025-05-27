@@ -1,9 +1,9 @@
 import ECR from 'aws-sdk/clients/ecr';
 import awsSdk from 'aws-sdk/lib/maintenance_mode_message';
 awsSdk.suppress = true; // Disable aws sdk maintenance mode message at startup
-import rp, { RequestPromiseOptions } from 'request-promise-native';
 import { Registry } from '../../Registry';
 import { ContainerImage } from '../../../model/container';
+import axios, { AxiosRequestConfig } from 'axios';
 
 const ECR_PUBLIC_GALLERY_HOSTNAME = 'public.ecr.aws';
 
@@ -66,7 +66,7 @@ export class Ecr extends Registry<EcrConfiguration> {
         return imageNormalized;
     }
 
-    async authenticate(image: ContainerImage, requestOptions: RequestPromiseOptions) {
+    async authenticate(image: ContainerImage, requestOptions: AxiosRequestConfig) {
         const requestOptionsWithAuth = requestOptions;
         // Private registry
         if (this.configuration.accesskeyid) {
@@ -87,15 +87,14 @@ export class Ecr extends Registry<EcrConfiguration> {
 
             // Public ECR gallery
         } else if (image.registry.url.includes(ECR_PUBLIC_GALLERY_HOSTNAME)) {
-            const response = await rp({
+            const response = await axios({
                 method: 'GET',
-                uri: 'https://public.ecr.aws/token/',
+                url: 'https://public.ecr.aws/token/',
                 headers: {
                     Accept: 'application/json',
                 },
-                json: true,
             });
-            requestOptionsWithAuth.headers!.Authorization = `Bearer ${response.token}`;
+            requestOptionsWithAuth.headers!.Authorization = `Bearer ${response.data.token}`;
         }
         return requestOptionsWithAuth;
     }

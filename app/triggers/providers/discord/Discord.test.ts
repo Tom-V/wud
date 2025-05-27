@@ -1,9 +1,8 @@
 import { ValidationError } from 'joi';
-import rp from 'request-promise-native';
-
-jest.mock('request-promise-native');
 import { Discord, DiscordConfiguration } from './Discord';
 import { Container } from '../../../model/container';
+import axios from 'axios';
+jest.mock('axios');
 
 const discord = new Discord();
 
@@ -83,8 +82,8 @@ test('trigger should send POST http request to webhook endpoint', async () => {
         },
     } as Container;
     await discord.trigger(container);
-    expect(rp).toHaveBeenCalledWith({
-        body: {
+    expect(axios).toHaveBeenCalledWith({
+        data: {
             username: 'Bot Name',
             embeds: [
                 {
@@ -99,8 +98,7 @@ test('trigger should send POST http request to webhook endpoint', async () => {
                 },
             ],
         },
-        json: true,
         method: 'POST',
-        uri: 'https://discord.com/api/webhooks/1',
+        url: 'https://discord.com/api/webhooks/1',
     });
 });

@@ -356,7 +356,13 @@ export class Trigger<T extends TriggerConfiguration = TriggerConfiguration> exte
      * @param container
      */
     renderSimpleBody(container: Container) {
-        return renderSimple(this.configuration.simplebody, container);
+        try {
+            const result = renderSimple(this.configuration.simplebody, container);
+            return result;
+        } catch (e: any) {
+            this.log.warn(`Error rendering simple body: ${e.message} for container ${container.name}`);
+            throw e;
+        }
     }
 
     /**

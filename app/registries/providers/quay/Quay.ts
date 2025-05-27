@@ -1,6 +1,6 @@
-import rp, { RequestPromiseOptions } from 'request-promise-native';
-import { DockerRegistryTags, Request, Registry } from '../../Registry';
+import { DockerRegistryTags, Registry } from '../../Registry';
 import { ContainerImage } from '../../../model/container';
+import axios, { AxiosRequestConfig } from 'axios';
 
 export interface QuayConfiguration {
     namespace: string;
@@ -59,7 +59,7 @@ export class Quay extends Registry<QuayConfiguration> {
         return imageNormalized;
     }
 
-    async authenticate(image: ContainerImage, requestOptions: RequestPromiseOptions) {
+    async authenticate(image: ContainerImage, requestOptions: AxiosRequestConfig) {
         const requestOptionsWithAuth = requestOptions;
         let token;
 
@@ -68,16 +68,15 @@ export class Quay extends Registry<QuayConfiguration> {
         if (credentials) {
             const request = {
                 method: 'GET',
-                uri: `https://quay.io/v2/auth?service=quay.io&scope=repository:${image.name}:pull`,
+                url: `https://quay.io/v2/auth?service=quay.io&scope=repository:${image.name}:pull`,
                 headers: {
                     Accept: 'application/json',
                     Authorization: `Basic ${credentials}`,
                 },
-                json: true,
             };
             try {
-                const response = await rp(request);
-                token = response.token;
+                const response = await axios(request);
+                token = response.data.token;
             } catch (e: any) {
                 this.log.warn(
                     `Error when trying to get an access token (${e.message})`,
@@ -131,7 +130,7 @@ export class Quay extends Registry<QuayConfiguration> {
                 nextOrLast = `&last=${lastRegex[1]}`;
             }
         }
-        return this.callRegistry<Request<DockerRegistryTags>>({
+        return this.callRegistry<DockerRegistryTags>({
             image,
             url: `${image.registry.url}/${image.name}/tags/list?n=${itemsPerPage}${nextOrLast}`,
             resolveWithFullResponse: true,

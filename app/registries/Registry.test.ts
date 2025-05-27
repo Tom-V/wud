@@ -1,10 +1,10 @@
-import request from 'request';
+import axios, { AxiosRequestConfig } from 'axios';
+jest.mock('axios');
 import log from '../log';
 import { ContainerImage } from '../model/container';
 import { Registry } from './Registry';
-import { RequestPromiseOptions } from 'request-promise-native';
 
-jest.mock('request-promise-native');
+
 jest.mock('../prometheus/registry', () => ({
     getSummaryTags: () => ({
         observe: () => { },
@@ -34,7 +34,7 @@ test('normalizeImage should return same image when not overridden', () => {
 });
 
 test('authenticate should return same request options when not overridden', () => {
-    expect(registry.authenticate({} as ContainerImage, { x: 'x' } as RequestPromiseOptions)).resolves.toStrictEqual({
+    expect(registry.authenticate({} as ContainerImage, { x: 'x' } as AxiosRequestConfig)).resolves.toStrictEqual({
         x: 'x',
     });
 });
@@ -44,7 +44,7 @@ test('getTags should sort tags z -> a', () => {
     registryMocked.log = log;
     registryMocked.callRegistry = <T>() => Promise.resolve({
         headers: {},
-        body: { tags: ['v1', 'v2', 'v3'] },
+        data: { tags: ['v1', 'v2', 'v3'] },
     } as T);
     expect(
         registryMocked.getTags({ name: 'test', registry: { url: 'test' } } as ContainerImage),
@@ -281,6 +281,13 @@ test('callRegistry should call authenticate', () => {
     const registryMocked = new Registry();
     registryMocked.log = log;
     const spyAuthenticate = jest.spyOn(registryMocked, 'authenticate');
+    (axios as unknown as jest.Mock).mockResolvedValue({
+        data: {},
+        status: 200,
+        headers: {},
+        config: {},
+    });
+
     registryMocked.callRegistry({
         image: {} as ContainerImage,
         url: 'url',

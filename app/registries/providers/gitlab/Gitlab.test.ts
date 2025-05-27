@@ -1,4 +1,6 @@
-import rp, { RequestPromise } from 'request-promise-native';
+import axios from 'axios';
+jest.mock('axios');
+
 import { Gitlab, GitlabConfiguration } from './Gitlab';
 import { ContainerImage } from '../../../model/container';
 
@@ -9,8 +11,6 @@ gitlab.configuration = {
     authurl: 'https://gitlab.com',
     token: 'abcdef',
 };
-
-jest.mock('request-promise-native');
 
 test('validatedConfiguration should initialize when configuration is valid', () => {
     expect(
@@ -76,9 +76,8 @@ test('match should return true when registry url is from custom gitlab', () => {
 });
 
 test('authenticate should perform authenticate request', () => {
-    (rp as unknown as jest.Mock).mockImplementation(() => ({
-        token: 'token',
-    }));
+    (axios as unknown as jest.Mock).mockImplementation(() => Promise.resolve({ data: { token: 'token' } }));
+
     expect(
         gitlab.authenticate(
             {} as ContainerImage,

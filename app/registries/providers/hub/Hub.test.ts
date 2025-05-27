@@ -1,4 +1,3 @@
-import rp from 'request-promise-native';
 import { Hub, HubConfiguration } from './Hub';
 import { ContainerImage } from '../../../model/container';
 
@@ -9,7 +8,8 @@ hub.configuration = {
     url: 'https://registry-1.docker.io',
 };
 
-jest.mock('request-promise-native');
+jest.mock('axios');
+import axios from 'axios';
 
 test('validatedConfiguration should initialize when configuration is valid', () => {
     expect(
@@ -102,7 +102,7 @@ test('normalizeImage should not prefix with library when existing organization',
 });
 
 test('authenticate should perform authenticate request', () => {
-    (rp as unknown as jest.Mock).mockImplementation(() => Promise.resolve({ token: 'token' }));
+    (axios as unknown as jest.Mock).mockImplementation(() => Promise.resolve({ data: { token: 'token' } }));
     expect(
         hub.authenticate(
             {} as ContainerImage,

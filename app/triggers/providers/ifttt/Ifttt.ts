@@ -1,6 +1,6 @@
-import rp from 'request-promise-native';
 import { Trigger, TriggerConfiguration } from '../Trigger';
 import { Container } from '../../../model/container';
+import axios from 'axios';
 
 export interface IftttConfiguration extends TriggerConfiguration {
     key: string;
@@ -56,15 +56,13 @@ export class Ifttt extends Trigger<IftttConfiguration> {
      * Send http request to ifttt.
      */
     async sendHttpRequest(body: any) {
-        const options = {
+        await axios({
             method: 'POST',
-            uri: `https://maker.ifttt.com/trigger/${this.configuration.event}/with/key/${this.configuration.key}`,
+            url: `https://maker.ifttt.com/trigger/${this.configuration.event}/with/key/${this.configuration.key}`,
             headers: {
                 'Content-Type': 'application/json',
             },
-            body,
-            json: true,
-        };
-        return rp(options);
+            data: body,
+        });
     }
 }

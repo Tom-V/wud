@@ -1,6 +1,6 @@
-import rp, { RequestPromiseOptions } from 'request-promise-native';
 import { Registry } from '../../Registry';
 import { ContainerImage } from '../../../model/container';
+import axios, { AxiosRequestConfig } from 'axios';
 
 export interface GitlabConfiguration {
     url: string;
@@ -61,19 +61,18 @@ export class Gitlab extends Registry<GitlabConfiguration> {
      * @param image
      * @param requestOptions
      */
-    async authenticate(image: ContainerImage, requestOptions: RequestPromiseOptions) {
+    async authenticate(image: ContainerImage, requestOptions: AxiosRequestConfig) {
         const request = {
             method: 'GET',
-            uri: `${this.configuration.authurl}/jwt/auth?service=container_registry&scope=repository:${image.name}:pull`,
+            url: `${this.configuration.authurl}/jwt/auth?service=container_registry&scope=repository:${image.name}:pull`,
             headers: {
                 Accept: 'application/json',
                 Authorization: `Basic ${Gitlab.base64Encode('', this.configuration.token)}`,
             },
-            json: true,
         };
-        const response = await rp(request);
+        const response = await axios(request);
         const requestOptionsWithAuth = requestOptions;
-        requestOptionsWithAuth.headers!.Authorization = `Bearer ${response.token}`;
+        requestOptionsWithAuth.headers!.Authorization = `Bearer ${response.data.token}`;
         return requestOptionsWithAuth;
     }
 

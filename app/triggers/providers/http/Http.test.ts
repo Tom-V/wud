@@ -1,9 +1,8 @@
 import { ValidationError } from 'joi';
-import rp from 'request-promise-native';
-
-jest.mock('request-promise-native');
 import { Http, HttpConfiguration } from './Http';
 import { Container } from '../../../model/container';
+import axios from 'axios';
+jest.mock('axios');
 
 const http = new Http();
 
@@ -58,12 +57,12 @@ test('trigger should send GET http request when configured like that', async () 
         name: 'container1',
     } as Container;
     await http.trigger(container);
-    expect(rp).toHaveBeenCalledWith({
-        qs: {
+    expect(axios).toHaveBeenCalledWith({
+        params: {
             name: 'container1',
         },
         method: 'GET',
-        uri: 'https:///test',
+        url: 'https:///test',
         auth: undefined,
     });
 });
@@ -78,13 +77,12 @@ test('trigger should send POST http request when configured like that', async ()
         name: 'container1',
     } as Container;
     await http.trigger(container);
-    expect(rp).toHaveBeenCalledWith({
-        body: {
+    expect(axios).toHaveBeenCalledWith({
+        data: {
             name: 'container1',
         },
-        json: true,
         method: 'POST',
-        uri: 'https:///test',
+        url: 'https:///test',
     });
 });
 
@@ -98,14 +96,13 @@ test('trigger should use basic auth when configured like that', async () => {
         name: 'container1',
     } as Container;
     await http.trigger(container);
-    expect(rp).toHaveBeenCalledWith({
-        body: {
+    expect(axios).toHaveBeenCalledWith({
+        data: {
             name: 'container1',
         },
         method: 'POST',
-        json: true,
-        uri: 'https:///test',
-        auth: { user: 'user', pass: 'pass' },
+        url: 'https:///test',
+        auth: { username: 'user', password: 'pass' },
     });
 });
 
@@ -119,14 +116,15 @@ test('trigger should use bearer auth when configured like that', async () => {
         name: 'container1',
     } as Container;
     await http.trigger(container);
-    expect(rp).toHaveBeenCalledWith({
-        body: {
+    expect(axios).toHaveBeenCalledWith({
+        data: {
             name: 'container1',
         },
         method: 'POST',
-        json: true,
-        uri: 'https:///test',
-        auth: { bearer: 'bearer' },
+        url: 'https:///test',
+        headers: {
+            Authorization: 'Bearer bearer',
+        },
     });
 });
 
@@ -140,13 +138,16 @@ test('trigger should use proxy when configured like that', async () => {
         name: 'container1',
     } as Container;
     await http.trigger(container);
-    expect(rp).toHaveBeenCalledWith({
-        body: {
+    expect(axios).toHaveBeenCalledWith({
+        data: {
             name: 'container1',
         },
         method: 'POST',
-        json: true,
-        uri: 'https:///test',
-        proxy: 'http://proxy:3128',
+        url: 'https:///test',
+        proxy: {
+            host: 'proxy',
+            port: 3128,
+            protocol: 'http',
+        },
     });
 });

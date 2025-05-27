@@ -1,6 +1,6 @@
-import rp, { RequestPromiseOptions } from 'request-promise-native';
 import { Custom } from '../custom/Custom';
 import { ContainerImage } from '../../../model/container';
+import axios, { AxiosRequestConfig } from 'axios';
 
 export interface HubConfiguration {
     url: string;
@@ -80,14 +80,13 @@ export class Hub extends Custom<HubConfiguration> {
      * @param image
      * @param requestOptions
      */
-    async authenticate(image: ContainerImage, requestOptions: RequestPromiseOptions) {
-        const uri = `https://auth.docker.io/token?service=registry.docker.io&scope=repository:${image.name}:pull&grant_type=password`;
-        const request: RequestPromiseOptions = {
+    async authenticate(image: ContainerImage, requestOptions: AxiosRequestConfig) {
+        const request: AxiosRequestConfig = {
+            url: `https://auth.docker.io/token?service=registry.docker.io&scope=repository:${image.name}:pull&grant_type=password`,
             method: 'GET',
             headers: {
                 Accept: 'application/json',
             },
-            json: true,
         };
 
         // Add Authorization if any
@@ -96,9 +95,9 @@ export class Hub extends Custom<HubConfiguration> {
             request.headers!.Authorization = `Basic ${credentials}`;
         }
 
-        const response = await rp(uri, request);
+        const response = await axios(request);
         const requestOptionsWithAuth = requestOptions;
-        requestOptionsWithAuth.headers!.Authorization = `Bearer ${response.token}`;
+        requestOptionsWithAuth.headers!.Authorization = `Bearer ${response.data.token}`;
         return requestOptionsWithAuth;
     }
 

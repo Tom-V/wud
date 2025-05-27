@@ -1,6 +1,9 @@
+import { Logger } from '../../../log';
 import { Anonymous } from './Anonymous';
 
 const anonymous = new Anonymous();
+anonymous.log = new Logger() as Logger;
+jest.spyOn(anonymous.log, 'info').mockImplementation(jest.fn());
 
 const configurationValid = {};
 

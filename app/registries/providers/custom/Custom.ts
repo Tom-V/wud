@@ -1,8 +1,8 @@
-import { RequestPromiseOptions } from 'request-promise-native';
 import { ContainerImage } from '../../../model/container';
 import { Registry } from '../../Registry';
 import { AnySchema } from 'joi';
 import { BaseConfig } from '../../../registry/Component';
+import { AxiosRequestConfig } from 'axios';
 
 export interface CustomConfiguration extends BaseConfig {
     url: string;
@@ -78,7 +78,7 @@ export class Custom<TConfig extends CustomConfiguration = CustomConfiguration> e
      * @param image
      * @param requestOptions
      */
-    async authenticate(_image: ContainerImage, requestOptions: RequestPromiseOptions) {
+    async authenticate(_image: ContainerImage, requestOptions: AxiosRequestConfig) {
         const requestOptionsWithAuth = requestOptions;
         const credentials = this.getAuthCredentials();
         if (credentials) {
