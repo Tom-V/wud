@@ -43,6 +43,10 @@ export function emitContainerReports(containerReports: ContainerReport[]) {
  */
 export function registerContainerReports(handler: (reports: ContainerReport[]) => void) {
     eventEmitter.on(WUD_CONTAINER_REPORTS, handler);
+
+    return () => {
+        eventEmitter.off(WUD_CONTAINER_REPORTS, handler);
+    }
 }
 
 /**
@@ -59,6 +63,10 @@ export function emitContainerReport(containerReport: ContainerReport) {
  */
 export function registerContainerReport(handler: (report: ContainerReport) => void) {
     eventEmitter.on(WUD_CONTAINER_REPORT, handler);
+
+    return () => {
+        eventEmitter.off(WUD_CONTAINER_REPORT, handler);
+    }
 }
 
 /**
@@ -71,10 +79,13 @@ export function emitContainerAdded(containerAdded: Container) {
 
 /**
  * Register to container added event.
- * @param handler
  */
 export function registerContainerAdded(handler: (container: Container) => void) {
     eventEmitter.on(WUD_CONTAINER_ADDED, handler);
+
+    return () => {
+        eventEmitter.off(WUD_CONTAINER_ADDED, handler);
+    }
 }
 
 /**
@@ -87,12 +98,14 @@ export function emitContainerUpdated(containerUpdated: Container) {
 
 /**
  * Register to container updated event.
- * @param handler
  */
 export function registerContainerUpdated(handler: (container: Container) => void) {
     eventEmitter.on(WUD_CONTAINER_UPDATED, handler);
-}
 
+    return () => {
+        eventEmitter.off(WUD_CONTAINER_UPDATED, handler);
+    }
+}
 /**
  * Emit container removed.
  * @param containerRemoved
@@ -107,6 +120,10 @@ export function emitContainerRemoved(containerRemoved: Container) {
  */
 export function registerContainerRemoved(handler: (removed: Container) => void) {
     eventEmitter.on(WUD_CONTAINER_REMOVED, handler);
+
+    return () => {
+        eventEmitter.off(WUD_CONTAINER_REMOVED, handler);
+    }
 }
 
 export function emitWatcherStart(watcher: Watcher) {
@@ -115,6 +132,10 @@ export function emitWatcherStart(watcher: Watcher) {
 
 export function registerWatcherStart(handler: (watcher: Watcher) => void) {
     eventEmitter.on(WUD_WATCHER_START, handler);
+
+    return () => {
+        eventEmitter.off(WUD_WATCHER_START, handler);
+    }
 }
 
 export function emitWatcherStop(watcher: Watcher) {
@@ -123,5 +144,8 @@ export function emitWatcherStop(watcher: Watcher) {
 
 export function registerWatcherStop(handler: (watcher: Watcher) => void) {
     eventEmitter.on(WUD_WATCHER_STOP, handler);
-}
 
+    return () => {
+        eventEmitter.off(WUD_WATCHER_STOP, handler);
+    }
+}

@@ -2,7 +2,7 @@ import { promises as fs } from 'fs';
 import mqtt, { IClientOptions, MqttClient } from 'mqtt';
 import { Trigger } from '../Trigger';
 import { Hass } from './Hass';
-import { registerContainerAdded, registerContainerUpdated } from '../../../event';
+import { registerContainerAdded, registerContainerUpdated, } from '../../../event';
 import { Container, flatten } from '../../../model/container';
 import { MqttConfiguration } from './MqttConfiguration';
 
@@ -93,6 +93,8 @@ export class Mqtt extends Trigger<MqttConfiguration> {
     // We have to clean this up, but we don't have to worry about it for now
     private hass?: Hass;
 
+    private cleanupListeners: (() => void)[] = [];
+
     async initTrigger() {
         // Enforce simple mode
         this.configuration.mode = 'simple';
@@ -126,8 +128,23 @@ export class Mqtt extends Trigger<MqttConfiguration> {
                 log: this.log,
             });
         }
-        registerContainerAdded((container) => this.trigger(container));
-        registerContainerUpdated((container) => this.trigger(container));
+
+        const listener = async (container: Container) => {
+            await this.trigger(container);
+        };
+
+        this.cleanupListeners.push(registerContainerAdded(listener));
+        this.cleanupListeners.push(registerContainerUpdated(listener));
+    }
+
+    async deregisterTrigger() {
+        this.cleanupListeners.forEach((l) => l());
+        this.cleanupListeners = [];
+
+        if (this.hass) {
+            this.hass.deregister();
+            this.hass = undefined;
+        }
     }
 
     /**

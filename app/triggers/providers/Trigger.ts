@@ -251,6 +251,7 @@ export class Trigger<T extends TriggerConfiguration = TriggerConfiguration> exte
         );
     }
 
+    private cleanupListener?: (() => void);
     /**
      * Init the Trigger.
      */
@@ -259,17 +260,30 @@ export class Trigger<T extends TriggerConfiguration = TriggerConfiguration> exte
         if (this.configuration.auto) {
             this.log.info(`Registering for auto execution`);
             if (this.configuration.mode.toLowerCase() === 'simple') {
-                event.registerContainerReport(async (containerReport) =>
+                this.cleanupListener = event.registerContainerReport(async (containerReport) =>
                     this.handleContainerReport(containerReport),
                 );
             }
             if (this.configuration.mode.toLowerCase() === 'batch') {
-                event.registerContainerReports(async (containersReports) =>
+                this.cleanupListener = event.registerContainerReports(async (containersReports) =>
                     this.handleContainerReports(containersReports),
                 );
             }
         } else {
             this.log.info(`Registering for manual execution`);
+        }
+    }
+
+    /**
+     * Deregister the Trigger.
+     */
+    async deregisterComponent() {
+        await this.deregisterTrigger();
+        if (this.configuration.auto) {
+            this.log.info(`Deregistering from auto execution`);
+            this.cleanupListener?.();
+        } else {
+            this.log.info(`Deregistering from manual execution`);
         }
     }
 
@@ -319,6 +333,13 @@ export class Trigger<T extends TriggerConfiguration = TriggerConfiguration> exte
      */
 
     async initTrigger() {
+        // do nothing by default
+    }
+
+    /**
+     * Deregister Trigger. Can be overridden in trigger implementation class.
+     */
+    async deregisterTrigger() {
         // do nothing by default
     }
 

@@ -52,6 +52,8 @@ export class Hass {
     configuration: MqttConfiguration;
     log: Logger;
 
+    cleanupListeners: (() => void)[] = [];
+
     constructor({ client, configuration, log }: {
         client: MqttClient;
         configuration: MqttConfiguration;
@@ -61,24 +63,31 @@ export class Hass {
         this.configuration = configuration;
         this.log = log;
 
+
+
         // Subscribe to container events to sync HA
-        registerContainerAdded((container) =>
+        this.cleanupListeners.push(registerContainerAdded((container) =>
             this.addContainerSensor(container),
-        );
-        registerContainerUpdated((container) =>
+        ));
+        this.cleanupListeners.push(registerContainerUpdated((container) =>
             this.addContainerSensor(container),
-        );
-        registerContainerRemoved((container) =>
+        ));
+        this.cleanupListeners.push(registerContainerRemoved((container) =>
             this.removeContainerSensor(container),
-        );
+        ));
 
         // Subscribe to watcher events to sync HA
-        registerWatcherStart((watcher) =>
+        this.cleanupListeners.push(registerWatcherStart((watcher) =>
             this.updateWatcherSensors({ watcher, isRunning: true }),
-        );
-        registerWatcherStop((watcher) =>
+        ));
+        this.cleanupListeners.push(registerWatcherStop((watcher) =>
             this.updateWatcherSensors({ watcher, isRunning: false }),
-        );
+        ));
+    }
+
+    deregister() {
+        this.cleanupListeners.forEach((l) => l());
+        this.cleanupListeners = [];
     }
 
     /**
