@@ -1,6 +1,6 @@
 import express, { Request, Response } from 'express';
 import nocache from 'nocache';
-import * as store from '../store';
+import { store } from '../store';
 
 const router = express.Router();
 

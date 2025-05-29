@@ -1,7 +1,7 @@
 import express, { Request, Response } from 'express';
 import passport from 'passport';
 import nocache from 'nocache';
-import { output } from '../prometheus';
+import { prometheus } from '../prometheus';
 import * as auth from './auth';
 
 /**
@@ -17,7 +17,7 @@ const router = express.Router();
 async function outputMetrics(req: Request, res: Response) {
     res.status(200)
         .type('text')
-        .send(await output());
+        .send(await prometheus.output());
 }
 
 /**

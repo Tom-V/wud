@@ -31,7 +31,7 @@ export async function registerComponent(kind: ComponentKind, provider: string, n
         states[kind][component.getId()] = component as any;
         return componentRegistered;
     } catch (e: any) {
-        console.log(e);
+        log.error(e);
         throw new Error(
             `Error when registering component ${providerLowercase} (${e.message})`,
         );
@@ -190,9 +190,9 @@ export async function registerAuthentications() {
  * @param component
  * @param kind
  */
-export async function deregisterComponent(component: Component, kind: ComponentKind) {
+export function deregisterComponent(component: Component, kind: ComponentKind) {
     try {
-        await component.deregister();
+        component.deregister();
     } catch (e: any) {
         throw new Error(
             `Error when deregistering component ${component.getId()} (${e.message})`,
@@ -210,38 +210,37 @@ export async function deregisterComponent(component: Component, kind: ComponentK
  * @param components
  * @param kind
  */
-export async function deregisterComponents<T extends Component<any>>(components: T[], kind: ComponentKind) {
-    const deregisterPromises = components.map(async (component) =>
-        deregisterComponent(component, kind),
-    );
-    return Promise.all(deregisterPromises);
+export function deregisterComponents<T extends Component<any>>(components: T[], kind: ComponentKind) {
+    components.forEach((component) => {
+        deregisterComponent(component, kind);
+    });
 }
 
 /**
  * Deregister all watchers.
  */
-export async function deregisterWatchers() {
+export function deregisterWatchers() {
     return deregisterComponents(Object.values(getState().watcher), 'watcher');
 }
 
 /**
  * Deregister all triggers.
  */
-export async function deregisterTriggers() {
+export function deregisterTriggers() {
     return deregisterComponents<Trigger>(Object.values(getState().trigger), 'trigger');
 }
 
 /**
  * Deregister all registries.
  */
-export async function deregisterRegistries() {
+export function deregisterRegistries() {
     return deregisterComponents(Object.values(getState().registry), 'registry');
 }
 
 /**
  * Deregister all authentications.
  */
-export async function deregisterAuthentications() {
+export function deregisterAuthentications() {
     return deregisterComponents(
         Object.values(getState().authentication),
         'authentication',
@@ -251,15 +250,16 @@ export async function deregisterAuthentications() {
 /**
  * Deregister all components.
  */
-export async function deregisterAll() {
+export function deregisterAll() {
     try {
-        await deregisterWatchers();
-        await deregisterTriggers();
-        await deregisterRegistries();
-        await deregisterAuthentications();
+        deregisterWatchers();
+        deregisterTriggers();
+        deregisterRegistries();
+        deregisterAuthentications();
     } catch (e: any) {
-        throw new Error(`Error when trying to deregister ${e.message}`);
+        throw new Error(`Error when deregistering components (${e.message})`);
     }
+    log.info('All components deregistered successfully.');
 }
 
 let initialized = false;
@@ -276,15 +276,15 @@ export async function init() {
     // Register authentications
     await registerAuthentications();
 
-    // Gracefully exit when possible
-    process.on('SIGINT', deregisterAll);
-    process.on('SIGTERM', deregisterAll);
-
     if (!initialized) {
         initialized = true;
         onConfigFileChange(async () => {
-            await deregisterAll();
+            deregisterAll();
             await init();
         });
     }
+}
+
+export function dispose() {
+    deregisterAll();
 }

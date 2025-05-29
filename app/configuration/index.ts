@@ -1,6 +1,6 @@
 import joi from "joi";
 import log, { LogLevel, logLevels } from '../log';
-import fs, { StatWatcher } from 'fs';
+import fs, { FSWatcher } from 'fs';
 import setValue from 'set-value';
 
 const VAR_FILE_SUFFIX = '__FILE';
@@ -33,7 +33,7 @@ export function reloadConfig() {
 }
 
 let cachedConfig: IBaseConfig | undefined = undefined;
-let configFileWatcher: StatWatcher | undefined = undefined;
+let configFileWatcher: FSWatcher | undefined = undefined;
 function getConfig(): IBaseConfig {
     if (cachedConfig) {
         return cachedConfig;
@@ -135,14 +135,12 @@ function processConfigFileOrDefault(): IBaseConfig {
     }
     if (!configFileWatcher) {
         // config file cannot be changed while the process is running so we don't need to recreate the watcher
-        configFileWatcher = fs.watchFile(configFilePath, (curr, prev) => {
-            if (curr.mtime !== prev.mtime) {
-                reloadConfig();
+        configFileWatcher = fs.watch(configFilePath, (eventType) => {
+            reloadConfig();
 
-                fileChangedFunctions.forEach((callback) => {
-                    callback();
-                });
-            }
+            fileChangedFunctions.forEach((callback) => {
+                callback();
+            });
         });
     }
 
@@ -201,6 +199,12 @@ function processConfigFileOrDefault(): IBaseConfig {
     return config;
 }
 
+export function stopWatcher() {
+    if (configFileWatcher) {
+        configFileWatcher.close();
+        configFileWatcher = undefined;
+    }
+}
 
 export function getVersion() {
     return getConfig().version;

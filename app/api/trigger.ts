@@ -1,6 +1,5 @@
 import { Request, Response } from 'express';
 import * as component from './component';
-import * as registry from '../registry';
 import * as states from '../registry/states';
 import logger from '../log';
 const log = logger.child({ component: 'trigger' });
@@ -35,6 +34,8 @@ async function runTrigger(req: Request, res: Response) {
     }
 
     try {
+        log.debug(JSON.stringify(containerToTrigger, null, 2));
+
         await triggerToRun.trigger(containerToTrigger);
         log.info(
             `Trigger executed with success (type=${triggerType}, name=${triggerName}, container=${JSON.stringify(containerToTrigger)})`,
