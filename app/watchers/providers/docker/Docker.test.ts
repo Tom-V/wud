@@ -4,7 +4,7 @@ import * as prometheusWatcher from '../../../prometheus/watcher';
 jest.mock('../../../event');
 jest.mock('../../../log');
 
-import log from '../../../log';
+import log, { Logger } from '../../../log';
 
 import * as  storeContainer from '../../../store/container';
 
@@ -18,25 +18,34 @@ import sampleCoercedSemver from '../../samples/coercedSemver.json';
 import { Container } from '../../../model/container';
 import Dockerode from 'dockerode';
 
+const logger = new Logger();
+
 const hub = new Hub();
 hub.kind = 'registry';
 hub.type = 'hub';
 hub.name = 'public';
+hub.log = logger;
 
 const ecr = new Ecr();
 ecr.kind = 'registry';
 ecr.type = 'ecr';
 ecr.name = 'private';
+ecr.configuration = {
+    public: false,
+};
+ecr.log = logger;
 
 const gcr = new Gcr();
 gcr.kind = 'registry';
 gcr.type = 'gcr';
 gcr.name = 'private';
+gcr.log = logger;
 
 const acr = new Acr();
 acr.kind = 'registry';
 acr.type = 'acr';
 acr.name = 'private';
+acr.log = logger;
 
 jest.mock('../../../registry/states', () => {
     return {
