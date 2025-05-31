@@ -1,22 +1,31 @@
+jest.mock('@aws-sdk/client-ecr', () => {
+    return {
+        ECRClient: jest.fn().mockImplementation(() => ({
+            send: jest.fn().mockResolvedValue({
+                authorizationData: [{ authorizationToken: 'xxxxx', expiresAt: new Date() }],
+            }),
+        })),
+        GetAuthorizationTokenCommand: jest.fn(),
+    };
+});
+
+import { Logger } from '../../../log';
 import { ContainerImage } from '../../../model/container';
 import { Ecr, EcrConfiguration } from './Ecr';
 
-jest.mock('aws-sdk/clients/ecr', () =>
-    jest.fn().mockImplementation(() => ({
-        getAuthorizationToken: () => ({
-            promise: () =>
-                Promise.resolve({
-                    authorizationData: [{ authorizationToken: 'xxxxx' }],
-                }),
-        }),
-    })),
-);
-
 const ecr = new Ecr();
+ecr.log = {
+    info: jest.fn(),
+    warn: jest.fn(),
+    error: jest.fn(),
+    debug: jest.fn(),
+} as any as Logger;
+
 ecr.configuration = {
     accesskeyid: 'accesskeyid',
     secretaccesskey: 'secretaccesskey',
     region: 'region',
+    public: false,
 };
 
 test('validatedConfiguration should initialize when configuration is valid', () => {
@@ -25,11 +34,13 @@ test('validatedConfiguration should initialize when configuration is valid', () 
             accesskeyid: 'accesskeyid',
             secretaccesskey: 'secretaccesskey',
             region: 'region',
+            public: false,
         }),
     ).toStrictEqual({
         accesskeyid: 'accesskeyid',
         secretaccesskey: 'secretaccesskey',
         region: 'region',
+        public: false,
     });
 });
 
@@ -83,6 +94,7 @@ test('match should return false when registry url is not from ecr', () => {
 test('maskConfiguration should mask configuration secrets', () => {
     expect(ecr.maskConfiguration()).toEqual({
         accesskeyid: 'a*********d',
+        public: false,
         region: 'region',
         secretaccesskey: 's*************y',
     });
@@ -105,7 +117,11 @@ test('normalizeImage should return the proper registry v2 endpoint', () => {
 });
 
 test('authenticate should call ecr auth endpoint', () => {
-    expect(ecr.authenticate({} as ContainerImage, { headers: {} })).resolves.toEqual({
+    expect(ecr.authenticate({
+        registry: {
+            url: '123456789.dkr.ecr.eu-west-1.amazonaws.com',
+        },
+    } as ContainerImage, { headers: {} })).resolves.toEqual({
         headers: {
             Authorization: 'Basic xxxxx',
         },
