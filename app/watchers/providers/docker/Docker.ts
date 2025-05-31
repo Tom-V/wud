@@ -273,9 +273,7 @@ export class Docker extends Watcher<DockerConfiguration> {
             );
         }
         this.log.info(`Cron scheduled (${this.configuration.cron})`);
-        this.watchCron = cron.schedule(this.configuration.cron!, () =>
-            this.watchFromCron(),
-        );
+        this.watchCron = cron.schedule(this.configuration.cron!, () => this.watchFromCron());
 
         // Force watchatstart value based on the state store (empty or not)
         this.configuration.watchatstart =
