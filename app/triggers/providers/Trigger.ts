@@ -277,8 +277,8 @@ export class Trigger<T extends TriggerConfiguration = TriggerConfiguration> exte
     /**
      * Deregister the Trigger.
      */
-    async deregisterComponent() {
-        await this.deregisterTrigger();
+    deregisterComponent() {
+        this.deregisterTrigger();
         if (this.configuration.auto) {
             this.log.info(`Deregistering from auto execution`);
             this.cleanupListener?.();
@@ -339,7 +339,7 @@ export class Trigger<T extends TriggerConfiguration = TriggerConfiguration> exte
     /**
      * Deregister Trigger. Can be overridden in trigger implementation class.
      */
-    async deregisterTrigger() {
+    deregisterTrigger() {
         // do nothing by default
     }
 

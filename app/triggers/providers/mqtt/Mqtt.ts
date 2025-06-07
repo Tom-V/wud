@@ -137,7 +137,7 @@ export class Mqtt extends Trigger<MqttConfiguration> {
         this.cleanupListeners.push(registerContainerUpdated(listener));
     }
 
-    async deregisterTrigger() {
+    deregisterTrigger() {
         this.cleanupListeners.forEach((l) => l());
         this.cleanupListeners = [];
 

@@ -1,73 +1,93 @@
 import joi from 'joi';
 import Loki from 'lokijs';
 import fs from 'fs';
-import logger from '../log';
-const log = logger.child({ component: 'store' });
+import logger, { Logger } from '../log';
 import { getStoreConfiguration } from '../configuration';
 
 import * as app from './app';
 import * as container from './container';
 
-// Store Configuration Schema
-const configurationSchema = joi.object().keys({
-    path: joi.string().default('/store'),
-    file: joi.string().default('wud.json'),
-});
 
-// Validate Configuration
-const configurationToValidate = configurationSchema.validate(
-    getStoreConfiguration() || {},
-);
-if (configurationToValidate.error) {
-    throw configurationToValidate.error;
-}
-const configuration = configurationToValidate.value;
+class Store {
+    private db: Loki;
 
-// Loki DB
-const db = new Loki(`${configuration.path}/${configuration.file}`, {
-    autosave: true,
-    serializationMethod: 'pretty'
-});
+    private readonly configuration: {
+        path: string
+        file: string
+    };
 
-function createCollections() {
-    app.createCollections(db);
-    container.createCollections(db);
-}
+    private log: Logger;
+    constructor() {
+        this.log = logger.child({ component: 'store' });
 
-/**
- * Load DB.
- * @param err
- * @param resolve
- * @param reject
- */
-async function loadDb(err: any, resolve: (value: void) => void, reject: (reason?: any) => void) {
-    if (err) {
-        reject(err);
-    } else {
-        // Create collections
-        createCollections();
-        resolve();
+        // Store Configuration Schema
+        const configurationSchema = joi.object<{
+            path: string
+            file: string
+        }>().keys({
+            path: joi.string().default('/store'),
+            file: joi.string().default('wud.json'),
+        });
+
+        // Validate Configuration
+        const configurationToValidate = configurationSchema.validate(
+            getStoreConfiguration() || {},
+        );
+        if (configurationToValidate.error) {
+            throw configurationToValidate.error;
+        }
+        this.configuration = configurationToValidate.value;
+
+        // Loki DB
+        this.db = new Loki(`${this.configuration.path}/${this.configuration.file}`, {
+            autosave: true,
+            serializationMethod: 'pretty'
+        });
+    }
+
+    createCollections() {
+        app.createCollections(this.db);
+        container.createCollections(this.db);
+    }
+    /**
+     * Load DB.
+     */
+    async loadDb(err: any, resolve: (value: void) => void, reject: (reason?: any) => void) {
+        if (err) {
+            reject(err);
+        } else {
+            // Create collections
+            this.createCollections();
+            resolve();
+        }
+    }
+
+    /**
+     * Init DB.
+     */
+    public async init() {
+        this.log.info(`Load store from (${this.configuration.path}/${this.configuration.file})`);
+        if (!fs.existsSync(this.configuration.path)) {
+            this.log.info(`Create folder ${this.configuration.path}`);
+            fs.mkdirSync(this.configuration.path);
+        }
+
+        return new Promise<void>((resolve, reject) => {
+            this.db.loadDatabase({}, (err) => this.loadDb(err, resolve, reject));
+        });
+    }
+
+    /**
+     * Get configuration.
+     */
+    public getConfiguration() {
+        return this.configuration;
+    }
+
+    public dispose() {
+        this.log.info('Disposing db store');
+        this.db.close();
     }
 }
 
-/**
- * Init DB.
- */
-export async function init() {
-    log.info(`Load store from (${configuration.path}/${configuration.file})`);
-    if (!fs.existsSync(configuration.path)) {
-        log.info(`Create folder ${configuration.path}`);
-        fs.mkdirSync(configuration.path);
-    }
-
-    return new Promise<void>((resolve, reject) => {
-        db.loadDatabase({}, (err) => loadDb(err, resolve, reject));
-    });
-}
-
-/**
- * Get configuration.
- */
-export function getConfiguration() {
-    return configuration;
-}
+export const store = new Store();
