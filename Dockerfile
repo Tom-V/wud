@@ -1,5 +1,5 @@
 # Common Stage
-FROM node:24-slim as base
+FROM node:23-alpine AS base
 
 LABEL maintainer="fmartinou"
 EXPOSE 3000
@@ -7,19 +7,16 @@ EXPOSE 3000
 ARG WUD_VERSION=unknown
 
 ENV WORKDIR=/home/node/app
-ENV WUD_LOG_FORMAT=text
 ENV WUD_VERSION=$WUD_VERSION
 
-HEALTHCHECK --interval=30s --timeout=5s CMD if [[ -z ${WUD_SERVER_ENABLED} || ${WUD_SERVER_ENABLED} == 'true' ]]; then curl --fail http://localhost:${WUD_SERVER_PORT:-3000}/health || exit 1; else exit 0; fi;
+HEALTHCHECK --interval=30s --timeout=5s CMD if [[ -z ${WUD_SERVER_ENABLED} || ${WUD_SERVER_ENABLED} == 'true' ]]; then wget --no-verbose --tries=1 --spider http://localhost:${WUD_SERVER_PORT:-3000}/health || exit 1; else exit 0; fi;
 
 WORKDIR /home/node/app
 
 RUN mkdir /store
 
 # Add useful stuff
-RUN apt update \
-    && apt install -y tzdata openssl curl git jq \
-    && rm -rf /var/cache/apt/*
+RUN apk add --no-cache tzdata openssl curl git jq
 
 # Dependencies stage
 FROM base AS dependencies
