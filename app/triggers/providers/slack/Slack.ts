@@ -5,6 +5,7 @@ import { Container } from '../../../model/container';
 export interface SlackConfiguration extends TriggerConfiguration {
     token: string;
     channel: string;
+    disabletitle: boolean;
 }
 
 /*
@@ -19,6 +20,7 @@ export class Slack extends Trigger<SlackConfiguration> {
         return this.joi.object().keys({
             token: this.joi.string().required(),
             channel: this.joi.string().required(),
+            disabletitle: this.joi.boolean().default(false),
         });
     }
 
@@ -45,17 +47,30 @@ export class Slack extends Trigger<SlackConfiguration> {
      * Post a message with new image version details.
      */
     async trigger(container: Container) {
-        return this.postMessage(this.renderSimpleBody(container));
+        const body = this.renderSimpleBody(container);
+
+        if (this.configuration.disabletitle) {
+            return this.sendMessage(body);
+        }
+
+        const title = this.renderSimpleTitle(container);
+        return this.sendMessage(`*${title}*\n\n${body}`);
     }
 
     async triggerBatch(containers: Container[]) {
-        return this.postMessage(this.renderBatchBody(containers));
+        const body = this.renderBatchBody(containers);
+        if (this.configuration.disabletitle) {
+            return this.sendMessage(body);
+        }
+
+        const title = this.renderBatchTitle(containers);
+        return this.sendMessage(`*${title}*\n\n${body}`);
     }
 
     /**
      * Post a message to a Slack channel.
      */
-    async postMessage(text: string) {
+    sendMessage(text: string) {
         return this.client.chat.postMessage({
             channel: this.configuration.channel,
             text,

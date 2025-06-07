@@ -5,6 +5,8 @@ import { Container } from '../../../model/container';
 export interface TelegramConfiguration extends TriggerConfiguration {
     bottoken: string;
     chatid: string;
+    disabletitle: boolean;
+    messageformat: 'Markdown' | 'HTML';
 }
 
 /**
@@ -21,6 +23,8 @@ export class Telegram extends Trigger<TelegramConfiguration> {
         return this.joi.object().keys({
             bottoken: this.joi.string().required(),
             chatid: this.joi.string().required(),
+            disabletitle: this.joi.boolean().default(false),
+            messageformat: this.joi.string().valid('Markdown', 'HTML').insensitive().default('Markdown'),
         });
     }
 
@@ -46,14 +50,27 @@ export class Telegram extends Trigger<TelegramConfiguration> {
      * Post a message with new image version details.
      *
      * @param image the image
-     * @returns {Promise<void>}
      */
     async trigger(container: Container) {
-        return this.sendMessage(this.renderSimpleBody(container));
+        const body = this.renderSimpleBody(container);
+
+        if (this.configuration.disabletitle) {
+            return this.sendMessage(body);
+        }
+
+        const title = this.renderSimpleTitle(container);
+
+        return this.sendMessage(`${this.bold(title)}\n\n${body}`);
     }
 
     async triggerBatch(containers: Container[]) {
-        return this.sendMessage(this.renderBatchBody(containers));
+        const body = this.renderBatchBody(containers);
+        if (this.configuration.disabletitle) {
+            return this.sendMessage(body);
+        }
+
+        const title = this.renderBatchTitle(containers);
+        return this.sendMessage(`${this.bold(title)}\n\n${body}`);
     }
 
     /**
@@ -62,6 +79,16 @@ export class Telegram extends Trigger<TelegramConfiguration> {
      * @returns {Promise<>}
      */
     async sendMessage(text: string) {
-        return this.telegramBot.sendMessage(this.configuration.chatid, text);
+        return this.telegramBot.sendMessage(this.configuration.chatid, text, {
+            parse_mode: this.getParseMode(),
+        });
+    }
+
+    private bold(text: string) {
+        return this.configuration.messageformat.toLowerCase() === 'markdown' ? `*${text}*` : `<b>${text}</b>`;
+    }
+
+    private getParseMode() {
+        return this.configuration.messageformat.toLowerCase() === 'markdown' ? 'MarkdownV2' : 'HTML';
     }
 }

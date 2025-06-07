@@ -17,6 +17,8 @@ const configurationValid: TelegramConfiguration = {
         'Container ${container.name} running with ${container.updateKind.kind} ${container.updateKind.localValue} can be updated to ${container.updateKind.kind} ${container.updateKind.remoteValue}${container.result && container.result.link ? "\\n" + container.result.link : ""}',
 
     batchtitle: '${containers.length} updates available',
+    disabletitle: false,
+    messageformat: 'Markdown',
 };
 
 beforeEach(() => {
@@ -51,5 +53,54 @@ test('maskConfiguration should mask sensitive data', () => {
         simpletitle:
             'New ${container.updateKind.kind} found for container ${container.name}',
         threshold: 'all',
+        disabletitle: false,
+        messageformat: 'Markdown',
     });
+});
+
+test('should send message with correct text', async () => {
+    telegram.configuration = {
+        ...configurationValid,
+        simpletitle: 'Test Title',
+        simplebody: 'Test Body',
+    };
+    telegram.sendMessage = jest.fn();
+    await telegram.trigger({} as any);
+    expect(telegram.sendMessage).toHaveBeenCalledWith(
+        '*Test Title*\n\nTest Body'
+    );
+});
+
+test.each([
+    { messageformat: 'Markdown' as const, expected: '*Test Title*\n\nTest Body' },
+    { messageformat: 'HTML' as const, expected: '<b>Test Title</b>\n\nTest Body' },
+])(
+    'should send message with correct text in %s format',
+    async ({ messageformat, expected }) => {
+        telegram.configuration = {
+            ...configurationValid,
+            simpletitle: 'Test Title',
+            simplebody: 'Test Body',
+            messageformat: messageformat,
+        };
+        telegram.sendMessage = jest.fn();
+        await telegram.trigger({} as any);
+        expect(telegram.sendMessage).toHaveBeenCalledWith(expected);
+    }
+);
+
+
+
+test('disabletitle should result in no title in message', async () => {
+    telegram.configuration = {
+        ...configurationValid,
+        simpletitle: 'Test Title',
+        simplebody: 'Test Body',
+        disabletitle: true,
+    };
+
+    telegram.sendMessage = jest.fn();
+    await telegram.trigger({} as any);
+
+    expect(telegram.sendMessage).toHaveBeenCalledWith('Test Body');
 });

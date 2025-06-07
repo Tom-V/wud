@@ -20,6 +20,7 @@ const configurationValid: SlackConfiguration = {
         'Container ${container.name} running with ${container.updateKind.kind} ${container.updateKind.localValue} can be updated to ${container.updateKind.kind} ${container.updateKind.remoteValue}${container.result && container.result.link ? "\\n" + container.result.link : ""}',
 
     batchtitle: '${containers.length} updates available',
+    disabletitle: false,
 };
 
 test('validateConfiguration should return validated configuration when valid', () => {
@@ -91,6 +92,33 @@ test('trigger should format text as expected', async () => {
         },
     });
     expect(response.text).toEqual(
-        'Container homeassistant running with tag 1.0.0 can be updated to tag 2.0.0\nhttps://test-2.0.0/changelog',
+        '*New tag found for container homeassistant*\n\nContainer homeassistant running with tag 1.0.0 can be updated to tag 2.0.0\nhttps://test-2.0.0/changelog',
     );
+});
+
+test('should send message with correct text', async () => {
+    slack.configuration = {
+        ...configurationValid,
+        simpletitle: 'Test Title',
+        simplebody: 'Test Body',
+    };
+    slack.sendMessage = jest.fn();
+    await slack.trigger({} as any);
+    expect(slack.sendMessage).toHaveBeenCalledWith(
+        '*Test Title*\n\nTest Body'
+    );
+});
+
+test('disabletitle should result in no title in message', async () => {
+    slack.configuration = {
+        ...configurationValid,
+        simpletitle: 'Test Title',
+        simplebody: 'Test Body',
+        disabletitle: true,
+    };
+
+    slack.sendMessage = jest.fn();
+    await slack.trigger({} as any);
+
+    expect(slack.sendMessage).toHaveBeenCalledWith('Test Body');
 });
