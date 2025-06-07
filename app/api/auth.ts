@@ -4,7 +4,7 @@ import connect from 'connect-loki';
 import passport from 'passport';
 import { v5 as uuidV5 } from 'uuid';
 import getmac from 'getmac';
-import * as store from '../store';
+import { store } from '../store';
 import * as states from '../registry/states';
 import log from '../log';
 import { getVersion, onConfigFileChange } from '../configuration';
@@ -129,17 +129,20 @@ function logout(req: Request, res: Response) {
 
 let initialized = false;
 let isChangingConfig = false;
+
+let lokiStore: connect.LokiStore | undefined;
 /**
  * Init auth (passport.js).
  */
 export function init(app: Express) {
+    lokiStore = new LokiStore({
+        path: `${store.getConfiguration().path}/${store.getConfiguration().file}`,
+        ttl: 604800, // 7 days
+    });
     // Init express session
     app.use(
         session({
-            store: new LokiStore({
-                path: `${store.getConfiguration().path}/${store.getConfiguration().file}`,
-                ttl: 604800, // 7 days
-            }),
+            store: lokiStore,
             secret: getSessionSecretKey(),
             resave: false,
             saveUninitialized: false,
@@ -208,4 +211,15 @@ export function init(app: Express) {
     router.post('/logout', logout);
 
     app.use('/auth', router);
+}
+
+
+export function dispose() {
+    if (lokiStore) {
+        log.info('disposing passport session store');
+        const loki = (lokiStore as any).client as Loki;
+        if (loki == null) log.info('loki client is null, nothing to close');
+        loki?.close();
+        lokiStore = undefined;
+    }
 }

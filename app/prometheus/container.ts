@@ -29,6 +29,8 @@ function populateGauge() {
     });
 }
 
+let populatorInterval: NodeJS.Timeout | undefined;
+
 /**
  * Init Container prometheus gauge.
  * @returns {Gauge<string>}
@@ -82,7 +84,14 @@ export function init() {
         ],
     });
     log.debug('Start container metrics interval');
-    setInterval(populateGauge, 5000);
+    populatorInterval = setInterval(populateGauge, 5000);
     populateGauge();
     return gaugeContainer;
+}
+
+export function dispose() {
+    if (populatorInterval) {
+        clearInterval(populatorInterval);
+        populatorInterval = undefined;
+    }
 }

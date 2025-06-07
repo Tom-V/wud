@@ -6,23 +6,32 @@ import * as trigger from './trigger';
 import * as watcher from './watcher';
 import * as registry from './registry';
 
-const log = logger.child({ component: 'prometheus' });
-/**
- * Start the Prometheus registry.
- */
-export function init() {
-    log.info('Init Prometheus module');
-    collectDefaultMetrics();
-    container.init();
-    registry.init();
-    trigger.init();
-    watcher.init();
+class Prometheus {
+    private log = logger.child({ component: 'prometheus' });
+    /**
+     * Start the Prometheus registry.
+     */
+    init() {
+        this.log.info('Init Prometheus module');
+        collectDefaultMetrics();
+        container.init();
+        registry.init();
+        trigger.init();
+        watcher.init();
+    }
+
+    dispose() {
+        this.log.info('Dispose Prometheus module');
+        container.dispose();
+    }
+
+    /**
+     * Return all metrics as string for Prometheus scrapping.
+     */
+    async output() {
+        return register.metrics();
+    }
+
 }
 
-/**
- * Return all metrics as string for Prometheus scrapping.
- */
-export async function output() {
-    return register.metrics();
-}
-
+export const prometheus = new Prometheus();

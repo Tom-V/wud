@@ -1,9 +1,9 @@
-import { getVersion } from './configuration';
+import { getVersion, stopWatcher } from './configuration';
 import log from './log';
-import * as store from './store';
+import { store } from './store';
 import * as registry from './registry';
 import * as api from './api';
-import * as prometheus from './prometheus';
+import { prometheus } from './prometheus';
 
 async function main() {
     log.info(`WUD is starting (version = ${getVersion()})`);
@@ -21,3 +21,14 @@ async function main() {
     await api.init();
 }
 main();
+
+function dispose() {
+    prometheus.dispose();
+    store.dispose();
+    registry.dispose();
+    api.dispose();
+    stopWatcher();
+}
+
+process.on('SIGTERM', dispose);
+process.on('SIGINT', dispose);

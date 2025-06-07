@@ -324,7 +324,7 @@ export class Docker extends Watcher<DockerConfiguration> {
     /**
      * Deregister the component.
      */
-    async deregisterComponent() {
+    deregisterComponent() {
         if (this.watchCron) {
             this.watchCron.stop();
             delete this.watchCron;

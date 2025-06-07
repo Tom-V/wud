@@ -48,9 +48,9 @@ export class Component<TConfig extends BaseConfig = {}> {
     /**
      * Deregister the component.
      */
-    async deregister() {
+    deregister() {
         this.log?.info('Deregister component');
-        await this.deregisterComponent();
+        this.deregisterComponent();
         return this;
     }
 
@@ -58,7 +58,7 @@ export class Component<TConfig extends BaseConfig = {}> {
      * Deregister the component (do nothing by default).
      */
 
-    async deregisterComponent() {
+    deregisterComponent() {
         // Do nothing by default
     }
 

@@ -54,8 +54,8 @@ test('deregisterComponent should throw when component fails to deregister', () =
     component.deregister = () => {
         throw new Error('Error x');
     };
-    expect(registry.deregisterComponent(component, 'trigger')).rejects.toThrowError(
-        'Error when deregistering component undefined.undefined',
+    expect(() => registry.deregisterComponent(component, 'trigger')).toThrow(
+        'Error when deregistering component undefined.undefined (Error x)'
     );
 });
 
@@ -332,8 +332,8 @@ test('deregisterAll should throw an error when any component fails to deregister
     getState().trigger = {
         'trigger1': component,
     };
-    expect(registry.deregisterAll()).rejects.toThrowError(
-        'Error when deregistering component undefined.undefined',
+    expect(registry.deregisterAll).toThrow(
+        'Error when deregistering component undefined.undefined (Fail!!!)',
     );
 });
 
@@ -345,8 +345,8 @@ test('deregisterRegistries should throw when errors occurred', async () => {
     getState().registry = {
         registry1: component,
     };
-    expect(registry.deregisterRegistries()).rejects.toThrowError(
-        'Error when deregistering component undefined.undefined',
+    expect(registry.deregisterRegistries).toThrow(
+        'Error when deregistering component undefined.undefined (Fail!!!)',
     );
 });
 
@@ -358,8 +358,8 @@ test('deregisterTriggers should throw when errors occurred', async () => {
     getState().trigger = {
         trigger1: component,
     };
-    expect(registry.deregisterTriggers()).rejects.toThrowError(
-        'Error when deregistering component undefined.undefined',
+    expect(registry.deregisterTriggers).toThrow(
+        'Error when deregistering component undefined.undefined (Fail!!!)',
     );
 });
 
@@ -371,7 +371,7 @@ test('deregisterWatchers should throw when errors occurred', async () => {
     getState().watcher = {
         watcher1: component,
     };
-    expect(registry.deregisterWatchers()).rejects.toThrowError(
-        'Error when deregistering component undefined.undefined',
+    expect(registry.deregisterWatchers).toThrow(
+        'Error when deregistering component undefined.undefined (Fail!!!)',
     );
 });
