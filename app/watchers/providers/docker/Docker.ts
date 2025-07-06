@@ -277,7 +277,7 @@ export class Docker extends Watcher<DockerConfiguration> {
         this.log.info(`Cron scheduled (${this.configuration.cron})`);
         this.watchCron = cron.schedule(
             this.configuration.cron,
-            () => this.watchFromCron(),
+            () => this.watchAutomated('cron'),
             { maxRandomDelay: this.configuration.jitter },
         );
 
@@ -288,7 +288,7 @@ export class Docker extends Watcher<DockerConfiguration> {
         // watch at startup if enabled (after all components have been registered)
         if (this.configuration.watchatstart) {
             this.watchCronTimeout = setTimeout(
-                () => this.watchFromCron(),
+                () => this.watchAutomated('startup'),
                 START_WATCHER_DELAY_MS,
             );
         }
@@ -296,7 +296,7 @@ export class Docker extends Watcher<DockerConfiguration> {
         // listen to docker events
         if (this.configuration.watchevents) {
             this.watchCronDebounced = debounce(() => {
-                this.watchFromCron();
+                this.watchAutomated('event');
             }, DEBOUNCED_WATCH_CRON_MS);
             this.listenDockerEventsTimeout = setTimeout(
                 () => this.listenDockerEvents(),
@@ -380,6 +380,8 @@ export class Docker extends Watcher<DockerConfiguration> {
     async onDockerEvent(dockerEventChunk: string) {
         let dockerEvent: any;
         try {
+            this.log.debug(`Received docker event: ${dockerEventChunk}`);
+            // Parse the docker event chunk
             dockerEvent = JSON.parse(dockerEventChunk.toString());
         } catch (e: any) {
             this.log.error(`failed to parse docker event, skipping event: ${dockerEventChunk}`);
@@ -421,10 +423,10 @@ export class Docker extends Watcher<DockerConfiguration> {
     }
 
     /**
-     * Watch containers (called by cron scheduled tasks).
+     * Watch containers (called by cron, or other scheduled tasks).
      */
-    async watchFromCron() {
-        this.log.info(`Cron started (${this.configuration.cron})`);
+    async watchAutomated(reason: string) {
+        this.log.info(`Watch because of ${reason} started (${this.configuration.cron})`);
 
         // Get container reports
         const containerReports = await this.watch();
@@ -443,7 +445,7 @@ export class Docker extends Watcher<DockerConfiguration> {
         ).length;
 
         const stats = `${containerReportsCount} containers watched, ${containerErrorsCount} errors, ${containerUpdatesCount} available updates`;
-        this.log.info(`Cron finished (${stats})`);
+        this.log.info(`Watch because of ${reason} finished (${stats})`);
         return containerReports;
     }
 
