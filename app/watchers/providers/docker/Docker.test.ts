@@ -105,6 +105,13 @@ describe('Docker Watcher', () => {
         docker = new Docker();
     });
 
+    afterEach(async () => {
+        // Clean up any registered watchers to prevent async operations after tests
+        if (docker && docker.deregisterComponent) {
+            docker.deregisterComponent();
+        }
+    });
+
     describe('Configuration', () => {
         test('should create instance', async () => {
             expect(docker).toBeDefined();
@@ -177,7 +184,7 @@ describe('Docker Watcher', () => {
 
         test('should schedule cron job on init', async () => {
             await docker.register('watcher', 'docker', 'test', {
-               cron: '0 20 * * *',
+                cron: '0 20 * * *',
             });
             docker.init();
             expect(mockCron.schedule).toHaveBeenCalledWith(
@@ -236,7 +243,11 @@ describe('Docker Watcher', () => {
 
     describe('Docker Events', () => {
         test('should listen to docker events', async () => {
-            const mockStream = { on: jest.fn() };
+            const mockStream = {
+                on: jest.fn(),
+                destroy: jest.fn(),
+                removeAllListeners: jest.fn(),
+            };
             mockDockerApi.getEvents.mockImplementation((options, callback) => {
                 callback(null, mockStream);
             });
@@ -304,7 +315,11 @@ describe('Docker Watcher', () => {
         });
 
         test('should process chunked create/destroy events', async () => {
-            const mockStream = { on: jest.fn() };
+            const mockStream = {
+                on: jest.fn(),
+                destroy: jest.fn(),
+                removeAllListeners: jest.fn(),
+            };
             mockDockerApi.getEvents.mockImplementation((options, callback) => {
                 callback(null, mockStream);
             });

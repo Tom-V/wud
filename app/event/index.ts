@@ -29,6 +29,10 @@ export function emitContainerReports(containerReports) {
  */
 export function registerContainerReports(handler) {
     eventEmitter.on(WUD_CONTAINER_REPORTS, handler);
+
+    return () => {
+        eventEmitter.off(WUD_CONTAINER_REPORTS, handler);
+    };
 }
 
 /**
@@ -45,6 +49,10 @@ export function emitContainerReport(containerReport) {
  */
 export function registerContainerReport(handler) {
     eventEmitter.on(WUD_CONTAINER_REPORT, handler);
+
+    return () => {
+        eventEmitter.off(WUD_CONTAINER_REPORT, handler);
+    };
 }
 
 /**
@@ -57,10 +65,13 @@ export function emitContainerAdded(containerAdded) {
 
 /**
  * Register to container added event.
- * @param handler
  */
 export function registerContainerAdded(handler) {
     eventEmitter.on(WUD_CONTAINER_ADDED, handler);
+
+    return () => {
+        eventEmitter.off(WUD_CONTAINER_ADDED, handler);
+    };
 }
 
 /**
@@ -73,12 +84,14 @@ export function emitContainerUpdated(containerUpdated) {
 
 /**
  * Register to container updated event.
- * @param handler
  */
 export function registerContainerUpdated(handler) {
     eventEmitter.on(WUD_CONTAINER_UPDATED, handler);
-}
 
+    return () => {
+        eventEmitter.off(WUD_CONTAINER_UPDATED, handler);
+    };
+}
 /**
  * Emit container removed.
  * @param containerRemoved
@@ -93,6 +106,10 @@ export function emitContainerRemoved(containerRemoved) {
  */
 export function registerContainerRemoved(handler) {
     eventEmitter.on(WUD_CONTAINER_REMOVED, handler);
+
+    return () => {
+        eventEmitter.off(WUD_CONTAINER_REMOVED, handler);
+    };
 }
 
 export function emitWatcherStart(watcher) {
@@ -101,6 +118,10 @@ export function emitWatcherStart(watcher) {
 
 export function registerWatcherStart(handler) {
     eventEmitter.on(WUD_WATCHER_START, handler);
+
+    return () => {
+        eventEmitter.off(WUD_WATCHER_START, handler);
+    };
 }
 
 export function emitWatcherStop(watcher) {
@@ -109,4 +130,8 @@ export function emitWatcherStop(watcher) {
 
 export function registerWatcherStop(handler) {
     eventEmitter.on(WUD_WATCHER_STOP, handler);
+
+    return () => {
+        eventEmitter.off(WUD_WATCHER_STOP, handler);
+    };
 }

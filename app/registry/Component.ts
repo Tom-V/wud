@@ -55,16 +55,16 @@ class Component {
     /**
      * Deregister the component.
      */
-    async deregister(): Promise<this> {
+    async deregister() {
         this.log.info('Deregister component');
-        await this.deregisterComponent();
+        this.deregisterComponent();
         return this;
     }
 
     /**
      * Deregister the component (do nothing by default).
      */
-    async deregisterComponent(): Promise<void> {
+    deregisterComponent() {
         // Do nothing by default
     }
 

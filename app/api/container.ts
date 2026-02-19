@@ -15,7 +15,6 @@ const serverConfiguration = getServerConfiguration();
 
 /**
  * Return registered watchers.
- * @returns {{id: string}[]}
  */
 function getWatchers() {
     return registry.getState().watcher;
@@ -23,7 +22,6 @@ function getWatchers() {
 
 /**
  * Return registered triggers.
- * @returns {{id: string}[]}
  */
 function getTriggers() {
     return registry.getState().trigger;
@@ -32,7 +30,6 @@ function getTriggers() {
 /**
  * Get containers from store.
  * @param query
- * @returns {*}
  */
 export function getContainersFromStore(query) {
     return storeContainer.getContainers(query);
@@ -87,7 +84,6 @@ function deleteContainer(req, res) {
  * Watch all containers.
  * @param req
  * @param res
- * @returns {Promise<void>}
  */
 async function watchContainers(req, res) {
     try {
@@ -202,7 +198,6 @@ async function runTrigger(req, res) {
  * Watch an image.
  * @param req
  * @param res
- * @returns {Promise<void>}
  */
 async function watchContainer(req, res) {
     const { id } = req.params;
@@ -244,7 +239,6 @@ async function watchContainer(req, res) {
 
 /**
  * Init Router.
- * @returns {*}
  */
 export function init() {
     router.use(nocache());

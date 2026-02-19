@@ -1,5 +1,5 @@
 // @ts-nocheck
-import * as prometheus from './index';
+import { prometheus } from './index';
 import * as configuration from '../configuration';
 
 // Mock configuration
@@ -53,6 +53,7 @@ describe('Prometheus Module', () => {
         const trigger = await import('./trigger');
         const watcher = await import('./watcher');
         const registry = await import('./registry');
+        const { prometheus } = await import('./index');
 
         prometheus.init();
 
@@ -64,26 +65,31 @@ describe('Prometheus Module', () => {
     });
 
     test('should NOT initialize metrics when disabled', async () => {
-        configuration.getPrometheusConfiguration.mockReturnValue({
+        configuration.getPrometheusConfiguration.mockReturnValueOnce({
             enabled: false,
         });
-        const { collectDefaultMetrics } = await import('prom-client');
-        const container = await import('./container');
-        const trigger = await import('./trigger');
-        const watcher = await import('./watcher');
-        const registry = await import('./registry');
+        // Clear any existing prometheus instance
+        jest.isolateModulesAsync(async () => {
+            const { collectDefaultMetrics } = await import('prom-client');
+            const { prometheus } = await import('./index');
+            const container = await import('./container');
+            const trigger = await import('./trigger');
+            const watcher = await import('./watcher');
+            const registry = await import('./registry');
 
-        prometheus.init();
+            prometheus.init();
 
-        expect(collectDefaultMetrics).not.toHaveBeenCalled();
-        expect(container.init).not.toHaveBeenCalled();
-        expect(registry.init).not.toHaveBeenCalled();
-        expect(trigger.init).not.toHaveBeenCalled();
-        expect(watcher.init).not.toHaveBeenCalled();
+            expect(collectDefaultMetrics).not.toHaveBeenCalled();
+            expect(container.init).not.toHaveBeenCalled();
+            expect(registry.init).not.toHaveBeenCalled();
+            expect(trigger.init).not.toHaveBeenCalled();
+            expect(watcher.init).not.toHaveBeenCalled();
+        });
     });
 
     test('should return metrics output', async () => {
         const { register } = await import('prom-client');
+        const { prometheus } = await import('./index');
 
         const output = await prometheus.output();
 

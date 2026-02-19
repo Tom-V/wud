@@ -1,27 +1,56 @@
-// @ts-nocheck
 // Mock all dependencies
+const mockStoreInit = jest.fn();
+const mockPrometheusInit = jest.fn();
+const mockRegistryInit = jest.fn();
+const mockApiInit = jest.fn();
+const mockApiDispose = jest.fn(() => Promise.resolve());
+const mockAuthDispose = jest.fn();
+const mockGetVersion = jest.fn().mockReturnValue('1.0.0');
+const mockLogInfo = jest.fn();
+const mockStopWatcher = jest.fn();
+const mockStoreDispose = jest.fn();
+const mockRegistryDispose = jest.fn();
+const mockPrometheusDispose = jest.fn();
+
 jest.mock('./configuration', () => ({
-    getVersion: jest.fn(() => '1.0.0'),
+    getVersion: mockGetVersion,
+    stopWatcher: mockStopWatcher,
 }));
 
 jest.mock('./log', () => ({
-    info: jest.fn(),
+    info: mockLogInfo,
+    warn: jest.fn(),
+    error: jest.fn(),
+    debug: jest.fn(),
+    trace: jest.fn(),
 }));
 
 jest.mock('./store', () => ({
-    init: jest.fn().mockResolvedValue(),
+    store: {
+        init: mockStoreInit,
+        dispose: mockStoreDispose,
+    },
 }));
 
 jest.mock('./registry', () => ({
-    init: jest.fn().mockResolvedValue(),
+    init: mockRegistryInit,
+    dispose: mockRegistryDispose,
 }));
 
 jest.mock('./api', () => ({
-    init: jest.fn().mockResolvedValue(),
+    init: mockApiInit,
+    dispose: mockApiDispose,
+}));
+
+jest.mock('./api/auth', () => ({
+    dispose: mockAuthDispose,
 }));
 
 jest.mock('./prometheus', () => ({
-    init: jest.fn(),
+    prometheus: {
+        init: mockPrometheusInit,
+        dispose: mockPrometheusDispose,
+    },
 }));
 
 describe('Main Application', () => {
@@ -31,28 +60,64 @@ describe('Main Application', () => {
         jest.resetModules();
     });
 
-    test('should initialize all components in correct order', async () => {
-        const logModule = await import('./log');
-        const store = await import('./store');
-        const registry = await import('./registry');
-        const api = await import('./api');
-        const prometheus = await import('./prometheus');
-        const { getVersion } = await import('./configuration');
+    test('should initialize all components are initiated', async () => {
+        mockStoreInit.mockResolvedValue(undefined);
+        mockPrometheusInit.mockReturnValue(undefined);
+        mockRegistryInit.mockResolvedValue(undefined);
+        mockApiInit.mockResolvedValue(undefined);
 
         // Import and run the main module
-        await import('./index');
+        const indexModule = await import('./index');
 
         // Wait for async operations to complete
         await new Promise((resolve) => setImmediate(resolve));
 
-        // Verify initialization order and calls
-        expect(getVersion).toHaveBeenCalled();
-        expect(logModule.default.info).toHaveBeenCalledWith(
+        // Verify initialization calls
+        expect(mockGetVersion).toHaveBeenCalled();
+        expect(mockLogInfo).toHaveBeenCalledWith(
             'WUD is starting (version = 1.0.0)',
         );
-        expect(store.init).toHaveBeenCalled();
-        expect(prometheus.init).toHaveBeenCalled();
-        expect(registry.init).toHaveBeenCalled();
-        expect(api.init).toHaveBeenCalled();
+        expect(mockStoreInit).toHaveBeenCalled();
+        expect(mockPrometheusInit).toHaveBeenCalled();
+        expect(mockRegistryInit).toHaveBeenCalled();
+        expect(mockApiInit).toHaveBeenCalled();
+
+        await indexModule.dispose();
+    });
+
+    test('should dispose the shared store only after api shutdown finishes', async () => {
+        mockStoreInit.mockResolvedValue(undefined);
+        mockPrometheusInit.mockReturnValue(undefined);
+        mockRegistryInit.mockResolvedValue(undefined);
+        mockApiInit.mockResolvedValue(undefined);
+
+        const disposeOrder: string[] = [];
+        mockPrometheusDispose.mockImplementation(() =>
+            disposeOrder.push('prometheus'),
+        );
+        mockApiDispose.mockImplementation(async () => {
+            disposeOrder.push('api');
+        });
+        mockAuthDispose.mockImplementation(() => disposeOrder.push('auth'));
+        mockStoreDispose.mockImplementation(() => disposeOrder.push('store'));
+        mockRegistryDispose.mockImplementation(() =>
+            disposeOrder.push('registry'),
+        );
+        mockStopWatcher.mockImplementation(() => disposeOrder.push('watcher'));
+
+        const indexModule = await import('./index');
+
+        await new Promise((resolve) => setImmediate(resolve));
+
+        await indexModule.dispose();
+
+        expect(disposeOrder).toEqual([
+            'prometheus',
+            'api',
+            'auth',
+            'store',
+            'registry',
+            'watcher',
+        ]);
     });
 });

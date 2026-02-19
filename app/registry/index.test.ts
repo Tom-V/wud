@@ -9,6 +9,7 @@ jest.mock('../configuration', () => ({
     getTriggerConfigurations: jest.fn(),
     getWatcherConfigurations: jest.fn(),
     getAuthenticationConfigurations: jest.fn(),
+    onConfigFileChange: jest.fn(),
 }));
 
 let registries = {};
@@ -33,6 +34,7 @@ import * as registry from './index';
 
 beforeEach(async () => {
     jest.clearAllMocks();
+    jest.useRealTimers();
     prometheusWatcher.init();
     registries = {};
     triggers = {};
@@ -46,6 +48,10 @@ beforeEach(async () => {
     mockGetAuthenticationConfigurations.mockImplementation(
         () => authentications,
     );
+    registry.testable_setReloadExecutor(async () => {
+        await registry.testable_deregisterAll();
+        await registry.init();
+    });
 });
 
 afterEach(async () => {
@@ -77,9 +83,9 @@ test('deregisterComponent should throw when component fails to deregister', asyn
     component.deregister = () => {
         throw new Error('Error x');
     };
-    expect(deregisterComponent(component)).rejects.toThrowError(
-        'Error when deregistering component .',
-    );
+    await expect(
+        registry.deregisterComponent(component, 'trigger'),
+    ).rejects.toThrowError('Error when deregistering component . (Error x)');
 });
 
 test('registerRegistries should register all registries', async () => {
@@ -393,8 +399,8 @@ test('deregisterAll should throw an error when any component fails to deregister
     registry.getState().trigger = {
         trigger1: component,
     };
-    expect(registry.testable_deregisterAll()).rejects.toThrowError(
-        'Error when deregistering component .',
+    expect(registry.deregisterAll()).rejects.toThrowError(
+        'Error when deregistering components (Error when deregistering component . (Fail!!!))',
     );
 });
 
@@ -406,8 +412,8 @@ test('deregisterRegistries should throw when errors occurred', async () => {
     registry.getState().registry = {
         registry1: component,
     };
-    expect(registry.testable_deregisterRegistries()).rejects.toThrowError(
-        'Error when deregistering component .',
+    expect(registry.deregisterRegistries()).rejects.toThrowError(
+        'Error when deregistering component . (Fail!!!)',
     );
 });
 
@@ -419,8 +425,8 @@ test('deregisterTriggers should throw when errors occurred', async () => {
     registry.getState().trigger = {
         trigger1: component,
     };
-    expect(registry.testable_deregisterTriggers()).rejects.toThrowError(
-        'Error when deregistering component .',
+    expect(registry.deregisterTriggers()).rejects.toThrowError(
+        'Error when deregistering component . (Fail!!!)',
     );
 });
 
@@ -432,7 +438,76 @@ test('deregisterWatchers should throw when errors occurred', async () => {
     registry.getState().watcher = {
         watcher1: component,
     };
-    expect(registry.testable_deregisterWatchers()).rejects.toThrowError(
-        'Error when deregistering component .',
+    expect(registry.deregisterWatchers()).rejects.toThrowError(
+        'Error when deregistering component . (Fail!!!)',
     );
+});
+
+test('config reload scheduler should debounce burst changes into one reload', async () => {
+    jest.useFakeTimers();
+    const reloadExecutor = jest.fn(async () => {});
+    registry.testable_setReloadExecutor(reloadExecutor);
+
+    registry.testable_scheduleReload();
+    registry.testable_scheduleReload();
+    registry.testable_scheduleReload();
+
+    expect(reloadExecutor).not.toHaveBeenCalled();
+
+    jest.advanceTimersByTime(registry.testable_reloadDebounceMs - 1);
+    await Promise.resolve();
+    expect(reloadExecutor).not.toHaveBeenCalled();
+
+    jest.advanceTimersByTime(1);
+    await Promise.resolve();
+    expect(reloadExecutor).toHaveBeenCalledTimes(1);
+    jest.useRealTimers();
+});
+
+test('config reload should coalesce overlap and run sequentially', async () => {
+    let resolveReload: (() => void) | undefined;
+    const reloadExecutor = jest.fn(
+        () =>
+            new Promise<void>((resolve) => {
+                resolveReload = resolve;
+            }),
+    );
+    registry.testable_setReloadExecutor(reloadExecutor);
+
+    void registry.testable_runReloadIfNeeded();
+    await Promise.resolve();
+    expect(reloadExecutor).toHaveBeenCalledTimes(1);
+
+    void registry.testable_runReloadIfNeeded();
+    await Promise.resolve();
+    expect(reloadExecutor).toHaveBeenCalledTimes(1);
+
+    resolveReload!();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(reloadExecutor).toHaveBeenCalledTimes(2);
+
+    resolveReload!();
+    await Promise.resolve();
+});
+
+test('reload executor can enforce deregister then init order', async () => {
+    const order: string[] = [];
+    registry.testable_setReloadExecutor(async () => {
+        order.push('deregister');
+        order.push('init');
+    });
+
+    await registry.testable_runReloadIfNeeded();
+    expect(order).toEqual(['deregister', 'init']);
+});
+
+test('config reload should call reload completion callbacks', async () => {
+    const completionCallback = jest.fn();
+    registry.onReloadComplete(completionCallback);
+    registry.testable_setReloadExecutor(async () => {});
+
+    await registry.testable_runReloadIfNeeded();
+
+    expect(completionCallback).toHaveBeenCalledTimes(1);
 });

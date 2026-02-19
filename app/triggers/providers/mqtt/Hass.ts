@@ -96,6 +96,7 @@ class Hass {
     log: Logger;
     client!: mqtt.MqttClient;
     configuration: MqttConfiguration;
+    cleanupListeners: (() => void)[] = [];
 
     constructor({
         configuration,
@@ -117,21 +118,31 @@ class Hass {
         this.client = client;
 
         // Subscribe to container events to sync HA
-        registerContainerAdded((container) =>
-            this.addContainerSensor(container),
+        this.cleanupListeners.push(
+            registerContainerAdded((container) =>
+                this.addContainerSensor(container),
+            ),
         );
-        registerContainerUpdated((container) =>
-            this.addContainerSensor(container),
+        this.cleanupListeners.push(
+            registerContainerUpdated((container) =>
+                this.addContainerSensor(container),
+            ),
         );
-        registerContainerRemoved((container) =>
-            this.removeContainerSensor(container),
+        this.cleanupListeners.push(
+            registerContainerRemoved((container) =>
+                this.removeContainerSensor(container),
+            ),
         );
         // Subscribe to watcher events to sync HA
-        registerWatcherStart((watcher) =>
-            this.updateWatcherSensors({ watcher, isRunning: true }),
+        this.cleanupListeners.push(
+            registerWatcherStart((watcher) =>
+                this.updateWatcherSensors({ watcher, isRunning: true }),
+            ),
         );
-        registerWatcherStop((watcher) =>
-            this.updateWatcherSensors({ watcher, isRunning: false }),
+        this.cleanupListeners.push(
+            registerWatcherStop((watcher) =>
+                this.updateWatcherSensors({ watcher, isRunning: false }),
+            ),
         );
     }
 
@@ -151,6 +162,11 @@ class Hass {
         for (const { sensor, value } of sensors) {
             await this.updateSensor({ topic: sensor.topic, value });
         }
+    }
+
+    deregister() {
+        this.cleanupListeners.forEach((l) => l());
+        this.cleanupListeners = [];
     }
 
     /**

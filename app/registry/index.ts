@@ -16,6 +16,7 @@ import Component, { ComponentConfiguration } from './Component';
 import Trigger from '../triggers/providers/Trigger';
 import Watcher from '../watchers/Watcher';
 import Registry from '../registries/Registry';
+import { onConfigFileChange } from '../configuration';
 import Authentication from '../authentications/providers/Authentication';
 
 export interface RegistryState {
@@ -37,14 +38,28 @@ const state: RegistryState = {
     authentication: {},
 };
 
+const RELOAD_DEBOUNCE_MS = 1000;
+let reloadDebounceTimeout: NodeJS.Timeout | undefined;
+let reloadInProgress = false;
+let reloadRequestedDuringRun = false;
+const reloadCompleteCallbacks: (() => void)[] = [];
+let reloadExecutor = async () => {
+    await deregisterAll();
+    await init();
+};
+
+export function onReloadComplete(callback: () => void) {
+    reloadCompleteCallbacks.push(callback);
+}
+
 export function getState() {
     return state;
 }
 
 /**
  * Get available providers for a given component kind.
- * @param {string} basePath relative path to the providers directory
- * @returns {string[]} sorted list of available provider names
+ * @param basePath relative path to the providers directory
+ * @returns sorted list of available provider names
  */
 function getAvailableProviders(basePath: string) {
     try {
@@ -64,8 +79,8 @@ function getAvailableProviders(basePath: string) {
 
 /**
  * Get documentation link for a component kind.
- * @param {string} kind component kind (trigger, watcher, etc.)
- * @returns {string} documentation path
+ * @param kind component kind (trigger, watcher, etc.)
+ * @returns documentation path
  */
 function getDocumentationLink(kind: ComponentKind) {
     const docLinks: Record<ComponentKind, string> = {
@@ -86,11 +101,11 @@ function getDocumentationLink(kind: ComponentKind) {
 
 /**
  * Build error message when a component provider is not found.
- * @param {string} kind component kind (trigger, watcher, etc.)
- * @param {string} provider the provider name that was not found
- * @param {string} error the original error message
- * @param {string[]} availableProviders list of available providers
- * @returns {string} formatted error message
+ * @param kind component kind (trigger, watcher, etc.)
+ * @param provider the provider name that was not found
+ * @param error the original error message
+ * @param availableProviders list of available providers
+ * @returns formatted error message
  */
 function getHelpfulErrorMessage(
     kind: ComponentKind,
@@ -120,11 +135,6 @@ function getHelpfulErrorMessage(
 /**
  * Register a component.
  *
- * @param {*} kind
- * @param {*} provider
- * @param {*} name
- * @param {*} configuration
- * @param {*} componentPath
  */
 async function registerComponent(
     kind: ComponentKind,
@@ -165,10 +175,6 @@ async function registerComponent(
 
 /**
  * Register all found components.
- * @param kind
- * @param configurations
- * @param path
- * @returns {*[]}
  */
 async function registerComponents(
     kind: ComponentKind,
@@ -202,7 +208,6 @@ async function registerComponents(
 
 /**
  * Register watchers.
- * @returns {Promise}
  */
 async function registerWatchers() {
     const configurations = getWatcherConfigurations();
@@ -261,7 +266,6 @@ async function registerTriggers() {
 
 /**
  * Register registries.
- * @returns {Promise}
  */
 async function registerRegistries() {
     const defaultRegistries = {
@@ -329,11 +333,11 @@ async function registerAuthentications() {
 
 /**
  * Deregister a component.
- * @param component
- * @param kind
- * @returns {Promise}
  */
-async function deregisterComponent(component: Component, kind: ComponentKind) {
+export async function deregisterComponent(
+    component: Component,
+    kind: ComponentKind,
+) {
     try {
         await component.deregister();
     } catch (e: any) {
@@ -350,49 +354,41 @@ async function deregisterComponent(component: Component, kind: ComponentKind) {
 
 /**
  * Deregister all components of kind.
- * @param components
- * @param kind
- * @returns {Promise}
  */
-async function deregisterComponents(
+export async function deregisterComponents(
     components: Component[],
     kind: ComponentKind,
 ) {
-    const deregisterPromises = components.map(async (component) =>
-        deregisterComponent(component, kind),
-    );
-    return Promise.all(deregisterPromises);
+    for (const component of components) {
+        await deregisterComponent(component, kind);
+    }
 }
 
 /**
  * Deregister all watchers.
- * @returns {Promise}
  */
-async function deregisterWatchers() {
+export function deregisterWatchers() {
     return deregisterComponents(Object.values(getState().watcher), 'watcher');
 }
 
 /**
  * Deregister all triggers.
- * @returns {Promise}
  */
-async function deregisterTriggers() {
+export function deregisterTriggers() {
     return deregisterComponents(Object.values(getState().trigger), 'trigger');
 }
 
 /**
  * Deregister all registries.
- * @returns {Promise}
  */
-async function deregisterRegistries() {
+export async function deregisterRegistries() {
     return deregisterComponents(Object.values(getState().registry), 'registry');
 }
 
 /**
  * Deregister all authentications.
- * @returns {Promise<unknown>}
  */
-async function deregisterAuthentications() {
+export function deregisterAuthentications() {
     return deregisterComponents(
         Object.values(getState().authentication),
         'authentication',
@@ -401,19 +397,63 @@ async function deregisterAuthentications() {
 
 /**
  * Deregister all components.
- * @returns {Promise}
  */
-async function deregisterAll() {
+export async function deregisterAll() {
     try {
         await deregisterWatchers();
         await deregisterTriggers();
         await deregisterRegistries();
         await deregisterAuthentications();
     } catch (e: any) {
-        throw new Error(`Error when trying to deregister ${e.message}`);
+        throw new Error(`Error when deregistering components (${e.message})`);
     }
+    log.info('All components deregistered successfully.');
 }
 
+async function runReloadIfNeeded() {
+    if (reloadInProgress) {
+        reloadRequestedDuringRun = true;
+        log.info('Config reload already running; coalescing new request');
+        return;
+    }
+
+    reloadInProgress = true;
+    do {
+        reloadRequestedDuringRun = false;
+        log.info('Config reload started');
+        try {
+            await reloadExecutor();
+            log.info('Config reload completed');
+        } catch (e: any) {
+            log.warn(`Config reload failed (${e.message})`);
+            log.debug(e);
+        }
+    } while (reloadRequestedDuringRun);
+    reloadInProgress = false;
+    reloadCompleteCallbacks.forEach((callback) => {
+        try {
+            callback();
+        } catch (e: any) {
+            log.warn(
+                `Config reload completion callback failed (${e?.message || e})`,
+            );
+            log.debug(e);
+        }
+    });
+}
+
+function scheduleReload() {
+    if (reloadDebounceTimeout) {
+        clearTimeout(reloadDebounceTimeout);
+    }
+    log.info(`Config reload scheduled (${RELOAD_DEBOUNCE_MS}ms debounce)`);
+    reloadDebounceTimeout = setTimeout(() => {
+        reloadDebounceTimeout = undefined;
+        void runReloadIfNeeded();
+    }, RELOAD_DEBOUNCE_MS);
+}
+
+let initialized = false;
 export async function init() {
     // Register triggers
     await registerTriggers();
@@ -427,11 +467,21 @@ export async function init() {
     // Register authentications
     await registerAuthentications();
 
-    // Gracefully exit when possible
-    process.on('SIGINT', deregisterAll);
-    process.on('SIGTERM', deregisterAll);
+    if (!initialized) {
+        initialized = true;
+        onConfigFileChange(() => {
+            scheduleReload();
+        });
+    }
 }
 
+export async function dispose() {
+    if (reloadDebounceTimeout) {
+        clearTimeout(reloadDebounceTimeout);
+        reloadDebounceTimeout = undefined;
+    }
+    await deregisterAll();
+}
 // The following exports are meant for testing only
 export {
     registerComponent as testable_registerComponent,
@@ -447,4 +497,12 @@ export {
     deregisterAuthentications as testable_deregisterAuthentications,
     deregisterAll as testable_deregisterAll,
     log as testable_log,
+    runReloadIfNeeded as testable_runReloadIfNeeded,
+    scheduleReload as testable_scheduleReload,
+    RELOAD_DEBOUNCE_MS as testable_reloadDebounceMs,
+    reloadExecutor as testable_reloadExecutor,
 };
+
+export function testable_setReloadExecutor(executor: () => Promise<void>) {
+    reloadExecutor = executor;
+}

@@ -35,6 +35,8 @@ async function runTrigger(req, res) {
     }
 
     try {
+        log.debug(JSON.stringify(containerToTrigger, null, 2));
+
         await triggerToRun.trigger(containerToTrigger);
         log.info(
             `Trigger executed with success (type=${triggerType}, name=${triggerName}, container=${JSON.stringify(containerToTrigger)})`,

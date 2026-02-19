@@ -1,7 +1,7 @@
 // @ts-nocheck
 import { Gauge, register } from 'prom-client';
 
-let watchContainerGauge;
+let watchContainerGauge: Gauge;
 
 export function init() {
     // Replace gauge if init is called more than once

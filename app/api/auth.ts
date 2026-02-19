@@ -1,15 +1,14 @@
 // @ts-nocheck
 import express from 'express';
 import session from 'express-session';
-import ConnectLoki from 'connect-loki';
-const LokiStore = ConnectLoki(session);
 import passport from 'passport';
 import { v5 as uuidV5 } from 'uuid';
 import getmac from 'getmac';
-import * as store from '../store';
+import { store } from '../store';
 import * as registry from '../registry';
 import log from '../log';
-import { getVersion } from '../configuration';
+import { getVersion, onConfigFileChange } from '../configuration';
+import LokiSessionStore from './LokiSessionStore';
 
 const router = express.Router();
 
@@ -21,10 +20,22 @@ const WUD_NAMESPACE = 'dee41e92-5fc4-460e-beec-528c9ea7d760';
 
 /**
  * Get all strategies id.
- * @returns {[]}
  */
 export function getAllIds() {
     return STRATEGY_IDS;
+}
+
+export function authenticate() {
+    return (req: any, res: any, next: any) => {
+        if (req.isAuthenticated?.()) {
+            return next();
+        }
+        return passport.authenticate(STRATEGY_IDS, { session: true })(
+            req,
+            res,
+            next,
+        );
+    };
 }
 
 /**
@@ -35,20 +46,12 @@ export function getAllIds() {
  * @returns {*}
  */
 export function requireAuthentication(req, res, next): any {
-    if (req.isAuthenticated()) {
-        return next();
-    }
-    return passport.authenticate(getAllIds(), { session: true })(
-        req,
-        res,
-        next,
-    );
+    return authenticate()(req, res, next);
 }
 
 /**
  * Get cookie max age.
  * @param days
- * @returns {number}
  */
 function getCookieMaxAge(days) {
     return 3600 * 1000 * 24 * days;
@@ -56,7 +59,6 @@ function getCookieMaxAge(days) {
 
 /**
  * Get session secret key (bound to wud version).
- * @returns {string}
  */
 function getSessionSecretKey() {
     const stringToHash = `wud.${getVersion()}.${getmac()}`;
@@ -78,6 +80,16 @@ function useStrategy(authentication, app) {
             `Unable to apply authentication ${authentication.getId()} (${e.message})`,
         );
     }
+}
+
+function refreshStrategies(app: express.Express) {
+    getAllIds().forEach((id) => {
+        passport.unuse(id);
+    });
+    STRATEGY_IDS.length = 0;
+    Object.values(registry.getState().authentication).forEach(
+        (authentication) => useStrategy(authentication, app),
+    );
 }
 
 function getUniqueStrategies() {
@@ -148,18 +160,20 @@ function logout(req, res) {
     });
 }
 
+let initialized = false;
+let isChangingConfig = false;
+
+let lokiStore: LokiSessionStore | undefined;
 /**
  * Init auth (passport.js).
  * @returns {*}
  */
 export function init(app) {
+    lokiStore = new LokiSessionStore(store.getDb());
     // Init express session
     app.use(
         session({
-            store: new LokiStore({
-                path: `${store.getConfiguration().path}/${store.getConfiguration().file}`,
-                ttl: 604800, // 7 days
-            }),
+            store: lokiStore,
             secret: getSessionSecretKey(),
             resave: false,
             saveUninitialized: false,
@@ -170,14 +184,35 @@ export function init(app) {
         }),
     );
 
+    // Middleware to handle configuration changes, preventing access during changes
+    app.use((_req, res, next) => {
+        if (isChangingConfig) {
+            res.status(503).json({
+                message:
+                    'Service is temporarily unavailable due to configuration changes.',
+            });
+        } else {
+            next();
+        }
+    });
+
     // Init passport middleware
     app.use(passport.initialize());
     app.use(passport.session());
 
     // Register all authentications
-    Object.values(registry.getState().authentication).forEach(
-        (authentication) => useStrategy(authentication, app),
-    );
+    refreshStrategies(app);
+
+    if (!initialized) {
+        initialized = true;
+        onConfigFileChange(() => {
+            isChangingConfig = true;
+        });
+        registry.onReloadComplete(() => {
+            refreshStrategies(app);
+            isChangingConfig = false;
+        });
+    }
 
     passport.serializeUser((user, done) => {
         done(null, JSON.stringify(user));
@@ -201,4 +236,11 @@ export function init(app) {
     router.post('/logout', logout);
 
     app.use('/auth', router);
+}
+
+export function dispose() {
+    if (lokiStore) {
+        log.info('disposing passport session store');
+        lokiStore = undefined;
+    }
 }

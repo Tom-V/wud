@@ -407,7 +407,7 @@ export function flatten(container: Container) {
  * @param container
  * @returns {string}
  */
-export function fullName(container: Container) {
+export function fullName(container: Pick<Container, 'watcher' | 'name'>) {
     return `${container.watcher}_${container.name}`;
 }
 

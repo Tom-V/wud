@@ -3,7 +3,7 @@ import Dockerode from 'dockerode';
 import Joi from 'joi';
 import JoiCronExpression from 'joi-cron-expression';
 const joi = JoiCronExpression(Joi);
-import cron from 'node-cron';
+import cron, { ScheduledTask } from 'node-cron';
 import parse from 'parse-docker-image-name';
 import debounce from 'just-debounce';
 import {
@@ -277,7 +277,7 @@ export class Docker extends Watcher {
     public configuration: DockerWatcherConfiguration =
         {} as DockerWatcherConfiguration;
     public dockerApi: Dockerode;
-    public watchCron: any;
+    public watchCron: ScheduledTask;
     public watchCronTimeout: any;
     public watchCronDebounced: any;
     public listenDockerEventsTimeout: any;
@@ -314,7 +314,11 @@ export class Docker extends Watcher {
         this.log.info(`Cron scheduled (${this.configuration.cron})`);
         this.watchCron = cron.schedule(
             this.configuration.cron,
-            () => this.watchFromCron(),
+            () => {
+                if (this.watchCron) {
+                    this.watchFromCron();
+                }
+            },
             { maxRandomDelay: this.configuration.jitter },
         );
 
@@ -324,22 +328,25 @@ export class Docker extends Watcher {
 
         // watch at startup if enabled (after all components have been registered)
         if (this.configuration.watchatstart) {
-            this.watchCronTimeout = setTimeout(
-                this.watchFromCron.bind(this),
-                START_WATCHER_DELAY_MS,
-            );
+            this.watchCronTimeout = setTimeout(() => {
+                if (this.watchCronTimeout) {
+                    this.watchFromCron();
+                }
+            }, START_WATCHER_DELAY_MS);
         }
 
         // listen to docker events
         if (this.configuration.watchevents) {
-            this.watchCronDebounced = debounce(
-                this.watchFromCron.bind(this),
-                DEBOUNCED_WATCH_CRON_MS,
-            );
-            this.listenDockerEventsTimeout = setTimeout(
-                this.listenDockerEvents.bind(this),
-                START_WATCHER_DELAY_MS,
-            );
+            this.watchCronDebounced = debounce(() => {
+                if (this.watchCronDebounced) {
+                    this.watchFromCron();
+                }
+            }, DEBOUNCED_WATCH_CRON_MS);
+            this.listenDockerEventsTimeout = setTimeout(() => {
+                if (this.listenDockerEventsTimeout) {
+                    this.listenDockerEvents();
+                }
+            }, START_WATCHER_DELAY_MS);
         }
     }
 
@@ -366,17 +373,36 @@ export class Docker extends Watcher {
     /**
      * Deregister the component.
      */
-    async deregisterComponent() {
-        if (this.watchCron) {
-            this.watchCron.stop();
-            delete this.watchCron;
+    deregisterComponent() {
+        // Delete properties first so callbacks can check if they should proceed
+        const watchCron = this.watchCron;
+        const watchCronTimeout = this.watchCronTimeout;
+        const listenDockerEventsTimeout = this.listenDockerEventsTimeout;
+        const dockerEventsStream = this.dockerEventsStream;
+
+        delete this.watchCron;
+        delete this.watchCronTimeout;
+        delete this.listenDockerEventsTimeout;
+        delete this.watchCronDebounced;
+        delete this.dockerEventsStream;
+
+        // Now actually stop/clear the operations
+        if (watchCron) {
+            watchCron.stop();
         }
-        if (this.watchCronTimeout) {
-            clearTimeout(this.watchCronTimeout);
+        if (watchCronTimeout) {
+            clearTimeout(watchCronTimeout);
         }
-        if (this.listenDockerEventsTimeout) {
-            clearTimeout(this.listenDockerEventsTimeout);
-            delete this.watchCronDebounced;
+        if (listenDockerEventsTimeout) {
+            clearTimeout(listenDockerEventsTimeout);
+        }
+        if (dockerEventsStream) {
+            if (typeof dockerEventsStream.destroy === 'function') {
+                dockerEventsStream.destroy();
+            }
+            if (typeof dockerEventsStream.removeAllListeners === 'function') {
+                dockerEventsStream.removeAllListeners();
+            }
         }
     }
 
@@ -412,6 +438,7 @@ export class Docker extends Watcher {
                     this.log.debug(err);
                 }
             } else {
+                this.dockerEventsStream = stream;
                 let chunks: Buffer[] = [];
                 const collectChunks = (chunk: Buffer) => {
                     chunks.push(chunk);

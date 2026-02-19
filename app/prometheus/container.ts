@@ -40,14 +40,16 @@ export function populateGauge() {
     metricsDirty = false;
 }
 
+let populateInterval: NodeJS.Timeout | undefined;
+let unregisterEvents: (() => void)[] | undefined;
+
 /**
  * Init Container prometheus gauge.
  */
 export function init() {
-    // Replace gauge if init is called more than once
-    if (gaugeContainer) {
-        register.removeSingleMetric(gaugeContainer.name);
-    }
+    // Make sure everything is cleaned when running multiple times;
+    dispose();
+
     gaugeContainer = new Gauge({
         name: 'wud_containers',
         help: 'The watched containers',
@@ -96,16 +98,34 @@ export function init() {
     });
     log.debug('Start container metrics interval');
     metricsDirty = true;
-    registerContainerAdded(() => {
-        metricsDirty = true;
-    });
-    registerContainerUpdated(() => {
-        metricsDirty = true;
-    });
-    registerContainerRemoved(() => {
-        metricsDirty = true;
-    });
-    setInterval(populateGauge, 5000);
+    unregisterEvents = [
+        registerContainerAdded(() => {
+            metricsDirty = true;
+        }),
+        registerContainerUpdated(() => {
+            metricsDirty = true;
+        }),
+        registerContainerRemoved(() => {
+            metricsDirty = true;
+        }),
+    ];
+    populateInterval = setInterval(populateGauge, 5000);
     populateGauge();
     return gaugeContainer;
+}
+
+export function dispose() {
+    if (populateInterval) {
+        clearInterval(populateInterval);
+        populateInterval = undefined;
+    }
+    if (unregisterEvents) {
+        unregisterEvents.forEach((unregister) => unregister());
+        unregisterEvents = undefined;
+    }
+
+    if (gaugeContainer) {
+        register.removeSingleMetric(gaugeContainer.name);
+        gaugeContainer = undefined;
+    }
 }

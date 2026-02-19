@@ -303,6 +303,7 @@ class Trigger extends Component {
         );
     }
 
+    private cleanupListener?: () => void;
     /**
      * Init the Trigger.
      */
@@ -314,20 +315,35 @@ class Trigger extends Component {
                 this.configuration.mode &&
                 this.configuration.mode.toLowerCase() === 'simple'
             ) {
-                event.registerContainerReport(async (containerReport) =>
-                    this.handleContainerReport(containerReport),
+                this.cleanupListener = event.registerContainerReport(
+                    async (containerReport) =>
+                        this.handleContainerReport(containerReport),
                 );
             }
             if (
                 this.configuration.mode &&
                 this.configuration.mode.toLowerCase() === 'batch'
             ) {
-                event.registerContainerReports(async (containersReports) =>
-                    this.handleContainerReports(containersReports),
+                this.cleanupListener = event.registerContainerReports(
+                    async (containersReports) =>
+                        this.handleContainerReports(containersReports),
                 );
             }
         } else {
             this.log.info(`Registering for manual execution`);
+        }
+    }
+
+    /**
+     * Deregister the Trigger.
+     */
+    deregisterComponent() {
+        this.deregisterTrigger();
+        if (this.configuration.auto) {
+            this.log.info(`Deregistering from auto execution`);
+            this.cleanupListener?.();
+        } else {
+            this.log.info(`Deregistering from manual execution`);
         }
     }
 
@@ -388,6 +404,13 @@ class Trigger extends Component {
      * Init Trigger. Can be overridden in trigger implementation class.
      */
     async initTrigger() {
+        // do nothing by default
+    }
+
+    /**
+     * Deregister Trigger. Can be overridden in trigger implementation class.
+     */
+    deregisterTrigger() {
         // do nothing by default
     }
 

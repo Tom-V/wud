@@ -12,8 +12,10 @@ import * as uiRouter from './ui';
 import * as prometheusRouter from './prometheus';
 import * as healthRouter from './health';
 import { getServerConfiguration } from '../configuration';
+import { Server } from 'http';
 
 const configuration = getServerConfiguration();
+let server: https.Server | Server | undefined = undefined;
 
 /**
  * Init Http API.
@@ -86,7 +88,7 @@ export async function init() {
                 );
                 throw e;
             }
-            https
+            server = https
                 .createServer({ key: serverKey, cert: serverCert }, app)
                 .listen(configuration.port, () => {
                     log.info(
@@ -95,7 +97,7 @@ export async function init() {
                 });
         } else {
             // Listen plain HTTP
-            app.listen(configuration.port, () => {
+            server = app.listen(configuration.port, () => {
                 log.info(
                     `Server listening on port ${configuration.port} (HTTP)`,
                 );
@@ -104,4 +106,17 @@ export async function init() {
     } else {
         log.debug('API/UI disabled');
     }
+}
+export function dispose() {
+    if (server) {
+        return new Promise<void>((resolve) => {
+            // Log shutdown
+            log.info('Shutting down API server...');
+            server.close(() => {
+                resolve();
+            });
+            server = undefined;
+        });
+    }
+    return Promise.resolve();
 }
