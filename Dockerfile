@@ -30,9 +30,6 @@ HEALTHCHECK --interval=30s --timeout=5s CMD if [[ -z ${WUD_SERVER_ENABLED} || ${
 
 RUN apk add --no-cache tzdata openssl curl bash
 
-COPY Docker.entrypoint.sh /usr/bin/entrypoint.sh
-RUN chmod +x /usr/bin/entrypoint.sh
-
 # Copy app runtime artifacts
 COPY --from=app-build /home/node/app/node_modules ./node_modules
 COPY --from=app-build /home/node/app/dist ./dist
@@ -41,5 +38,4 @@ COPY --from=app-build /home/node/app/package.json ./package.json
 # Copy UI build output
 COPY --from=ui-build /home/node/ui/dist ./ui
 
-ENTRYPOINT ["/usr/bin/entrypoint.sh"]
 CMD ["node", "dist/index"]

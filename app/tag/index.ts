@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Semver utils.
  */
@@ -97,7 +96,7 @@ export function transform(transformFormula, originalTag) {
         log.warn(
             `Error when applying transform function [${transformFormula}]to tag [${originalTag}]`,
         );
-        log.debug(e);
+        log.debug(JSON.stringify(e));
         return originalTag;
     }
 }

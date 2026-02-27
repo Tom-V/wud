@@ -1,10 +1,11 @@
-// @ts-nocheck
+import logger, { LogLevel } from '../log';
 import fs from 'fs';
 import joi from 'joi';
 import setValue from 'set-value';
 import { Request } from 'express';
 
 const VAR_FILE_SUFFIX = '__FILE';
+export const log = logger;
 
 /*
  * Get a prop by path from environment variables.
@@ -49,7 +50,7 @@ export function replaceSecrets(wudEnvVars) {
 }
 
 // 1. Get a copy of all wud related env vars
-export const wudEnvVars = {};
+export const wudEnvVars: any = {};
 Object.keys(process.env)
     .filter((envVar) => envVar.toUpperCase().startsWith('WUD'))
     .forEach((wudEnvVar) => {
@@ -59,11 +60,14 @@ Object.keys(process.env)
 // 2. Replace all secret files referenced by their secret values
 replaceSecrets(wudEnvVars);
 
+// 3. Set logger loglevel
+log.setLogLevel(getLogLevel());
+
 export function getVersion() {
     return wudEnvVars.WUD_VERSION || 'unknown';
 }
 
-export function getLogLevel() {
+export function getLogLevel(): LogLevel {
     return wudEnvVars.WUD_LOG_LEVEL || 'info';
 }
 /**

@@ -5,7 +5,7 @@ import { getState } from '../../../registry';
 import { Container, ContainerImage, fullName } from '../../../model/container';
 import { Docker as DockerWatcher } from '../../../watchers/providers/docker/Docker';
 import Registry from '../../../registries/Registry';
-import Logger from 'bunyan';
+import { Logger } from '../../../log';
 
 /**
  * Replace a Docker container with an updated one.
@@ -246,7 +246,7 @@ class Docker extends Trigger {
             );
         } catch (e: any) {
             logContainer.warn(
-                `Error while waiting for container ${containerName} with id ${containerId}`,
+                `Error while waiting for container ${containerName} with id ${containerId}: ${JSON.stringify(e)}`,
             );
             throw e;
         }
@@ -564,7 +564,7 @@ class Docker extends Trigger {
      */
     async trigger(container: Container) {
         // Child logger for the container to process
-        const logContainer = this.log.child({ container: fullName(container) });
+        const logContainer = this.log.child({ component: fullName(container) });
 
         // Get watcher
         const watcher = this.getWatcher(container);

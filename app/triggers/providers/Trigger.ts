@@ -167,7 +167,7 @@ class Trigger extends Component {
         ) {
             const logContainer =
                 this.log.child({
-                    container: fullName(containerReport.container),
+                    component: fullName(containerReport.container),
                 }) || this.log;
             let status = 'error';
             try {

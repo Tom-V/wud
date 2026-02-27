@@ -32,7 +32,7 @@ describe('Main Application', () => {
     });
 
     test('should initialize all components in correct order', async () => {
-        const { default: log } = await import('./log');
+        const logModule = await import('./log');
         const store = await import('./store');
         const registry = await import('./registry');
         const api = await import('./api');
@@ -47,7 +47,7 @@ describe('Main Application', () => {
 
         // Verify initialization order and calls
         expect(getVersion).toHaveBeenCalled();
-        expect(log.info).toHaveBeenCalledWith(
+        expect(logModule.default.info).toHaveBeenCalledWith(
             'WUD is starting (version = 1.0.0)',
         );
         expect(store.init).toHaveBeenCalled();

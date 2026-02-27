@@ -1,4 +1,4 @@
-import mqtt from 'mqtt/*';
+import mqtt from 'mqtt';
 import { getVersion } from '../../../configuration';
 import {
     registerContainerAdded,
@@ -14,7 +14,7 @@ import {
     MqqtConfiguration,
     MqqtConfiguration as MqttConfiguration,
 } from './Mqtt';
-import Logger from 'bunyan';
+import { Logger } from '../../../log';
 
 const HASS_MANUFACTURER = 'wud';
 const HASS_ENTITY_VALUE_TEMPLATE = '{{ value_json.image_tag_value }}';

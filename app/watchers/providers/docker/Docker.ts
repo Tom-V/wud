@@ -34,7 +34,7 @@ import * as registry from '../../../registry';
 import { getWatchContainerGauge } from '../../../prometheus/watcher';
 import Watcher from '../../Watcher';
 import { ComponentConfiguration } from '../../../registry/Component';
-import Logger from 'bunyan';
+import { Logger } from '../../../log';
 
 export interface DockerWatcherConfiguration extends ComponentConfiguration {
     socket: string;
@@ -456,7 +456,7 @@ export class Docker extends Watcher {
                 if (containerFound) {
                     // Child logger for the container to process
                     const logContainer = this.log.child({
-                        container: fullName(containerFound),
+                        component: fullName(containerFound),
                     });
                     const oldStatus = containerFound.status;
                     containerFound.status = newStatus;
@@ -546,7 +546,7 @@ export class Docker extends Watcher {
      */
     async watchContainer(container: Container) {
         // Child logger for the container to process
-        const logContainer = this.log.child({ container: fullName(container) });
+        const logContainer = this.log.child({ component: fullName(container) });
         const containerWithResult = container;
 
         // Reset previous error if so
@@ -559,7 +559,9 @@ export class Docker extends Watcher {
                 logContainer,
             );
         } catch (e: any) {
-            logContainer.warn(`Error when processing (${e.message})`);
+            logContainer.warn(
+                `Error when finding new version processing (${e.message}) for container ${container.name}`,
+            );
             logContainer.debug(e);
             containerWithResult.error = {
                 message: e.message,
@@ -789,7 +791,7 @@ export class Docker extends Watcher {
         if (imageNameToParse.includes('sha256:')) {
             if (!image.RepoTags || image.RepoTags.length === 0) {
                 this.log.warn(
-                    `Cannot get a reliable tag for this image [${imageNameToParse}]`,
+                    `Cannot get a reliable tag for this image [${imageNameToParse}} for container ${containerName}`,
                 );
                 return Promise.resolve();
             }
@@ -874,7 +876,7 @@ export class Docker extends Watcher {
      */
     mapContainerToContainerReport(containerWithResult: Container) {
         const logContainer = this.log.child({
-            container: fullName(containerWithResult),
+            component: fullName(containerWithResult),
         });
         const containerReport = {
             container: containerWithResult,

@@ -151,6 +151,7 @@ async function registerComponent(
         (state[kind] as any)[component.getId()] = component;
         return componentRegistered;
     } catch (e: any) {
+        log.error(typeof e === 'string' ? e : JSON.stringify(e));
         const availableProviders = getAvailableProviders(componentPath);
         const helpfulMessage = getHelpfulErrorMessage(
             kind,

@@ -1,5 +1,5 @@
 import fs from 'fs/promises';
-import mqtt, { IClientOptions, MqttClient } from 'mqtt';
+import mqtt, { IClientOptions } from 'mqtt';
 import Trigger, { TriggerConfiguration } from '../Trigger';
 import Hass from './Hass';
 import {
@@ -13,11 +13,14 @@ const hassDefaultPrefix = 'homeassistant';
 
 /**
  * Get container topic.
- * @param baseTopic
- * @param container
- * @return {string}
  */
-function getContainerTopic({ baseTopic, container }) {
+function getContainerTopic({
+    baseTopic,
+    container,
+}: {
+    baseTopic: string;
+    container: Container;
+}) {
     const containerName = container.name.replace(/\./g, '-');
     return `${baseTopic}/${container.watcher}/${containerName}`;
 }
@@ -49,7 +52,6 @@ export interface MqqtConfiguration extends TriggerConfiguration {
 class Mqtt extends Trigger {
     /**
      * Get the Trigger configuration schema.
-     * @returns {*}
      */
     getConfigurationSchema() {
         return this.joi.object().keys({
@@ -103,7 +105,6 @@ class Mqtt extends Trigger {
 
     /**
      * Sanitize sensitive data
-     * @returns {*}
      */
     maskConfiguration() {
         return {
@@ -116,8 +117,7 @@ class Mqtt extends Trigger {
         };
     }
 
-    private hass: Hass;
-    private client: MqttClient;
+    private cleanupListeners: (() => void)[] = [];
 
     async initTrigger() {
         // Enforce simple mode
@@ -179,8 +179,9 @@ class Mqtt extends Trigger {
             );
         });
 
-        this.client.on('error', (error: mqtt.ErrorWithReasonCode) => {
-            this.log.debug(`MQTT client error ${error.code}`);
+        this.client.on('error', (error) => {
+            const errorDetail = 'code' in error ? error.code : error.message;
+            this.log.debug(`MQTT client error ${errorDetail}`);
         });
 
         this.client.on('end', () => {
@@ -192,8 +193,23 @@ class Mqtt extends Trigger {
         if (this.hass) {
             this.hass.init(this.client);
         }
-        registerContainerAdded((container) => this.trigger(container));
-        registerContainerUpdated((container) => this.trigger(container));
+
+        const listener = async (container: Container) => {
+            await this.trigger(container);
+        };
+
+        this.cleanupListeners.push(registerContainerAdded(listener));
+        this.cleanupListeners.push(registerContainerUpdated(listener));
+    }
+
+    deregisterTrigger() {
+        this.cleanupListeners.forEach((l) => l());
+        this.cleanupListeners = [];
+
+        if (this.hass) {
+            this.hass.deregister();
+            this.hass = undefined;
+        }
     }
 
     /**
@@ -220,7 +236,6 @@ class Mqtt extends Trigger {
     /**
      * Mqtt trigger does not support batch mode.
      */
-
     async triggerBatch() {
         throw new Error('This trigger does not support "batch" mode');
     }
