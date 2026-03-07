@@ -1,9 +1,16 @@
-// @ts-nocheck
 import { ValidationError } from 'joi';
 
 import Command from './Command';
 
 const command = new Command();
+const isWindows = process.platform === 'win32';
+const shellDependentTest = isWindows ? test.skip : test;
+
+if (isWindows) {
+    console.warn(
+        '[Command.test] Skipping shell-dependent tests on Windows (/bin/sh is not available).',
+    );
+}
 
 const configurationValid = {
     cmd: 'echo "hello"',
@@ -43,10 +50,10 @@ test('validateConfiguration should throw error when invalid', async () => {
     };
     expect(() => {
         command.validateConfiguration(configuration);
-    }).toThrowError(ValidationError);
+    }).toThrow(ValidationError);
 });
 
-test('should trigger with container', async () => {
+shellDependentTest('should trigger with container', async () => {
     const cmd = new Command();
     await cmd.register('trigger', 'command', 'test', { cmd: 'echo test' });
     const logSpy = jest.spyOn(cmd.log, 'info');
@@ -59,7 +66,7 @@ test('should trigger with container', async () => {
     );
 });
 
-test('should trigger batch with containers', async () => {
+shellDependentTest('should trigger batch with containers', async () => {
     const cmd = new Command();
     await cmd.register('trigger', 'command', 'test', { cmd: 'echo batch' });
     const logSpy = jest.spyOn(cmd.log, 'info');
@@ -87,7 +94,7 @@ test('should handle command execution error', async () => {
     );
 });
 
-test('should log stderr when present', async () => {
+shellDependentTest('should log stderr when present', async () => {
     const cmd = new Command();
     await cmd.register('trigger', 'command', 'test', {
         cmd: 'echo warning >&2',

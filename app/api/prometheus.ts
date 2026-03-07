@@ -1,7 +1,7 @@
 // @ts-nocheck
 import express from 'express';
 import nocache from 'nocache';
-import { output } from '../prometheus';
+import { prometheus } from '../prometheus';
 import { requireAuthentication } from './auth';
 
 /**
@@ -18,7 +18,7 @@ const router = express.Router();
 async function outputMetrics(req, res) {
     res.status(200)
         .type('text')
-        .send(await output());
+        .send(await prometheus.output());
 }
 
 /**

@@ -1,11 +1,13 @@
 import express from 'express';
 import request from 'supertest';
 import * as prometheusApi from './prometheus';
-import { output } from '../prometheus';
+import { prometheus } from '../prometheus';
 import { requireAuthentication } from './auth';
 
 jest.mock('../prometheus', () => ({
-    output: jest.fn(() => Promise.resolve('mock-metrics')),
+    prometheus: {
+        output: jest.fn(() => Promise.resolve('mock-metrics')),
+    },
 }));
 
 jest.mock('./auth', () => ({
@@ -27,7 +29,7 @@ describe('API Prometheus', () => {
         expect(res.status).toBe(200);
         expect(res.type).toBe('text/plain');
         expect(res.text).toEqual('mock-metrics');
-        expect(output).toHaveBeenCalled();
+        expect(prometheus.output).toHaveBeenCalled();
         expect(requireAuthentication).toHaveBeenCalled();
     });
 });

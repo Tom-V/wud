@@ -5,10 +5,18 @@ import * as store from '../store';
 import * as registry from '../registry';
 
 jest.mock('../store', () => ({
-    getConfiguration: jest.fn(() => ({
-        path: '/tmp',
-        file: 'test.db',
-    })),
+    store: {
+        getDb: jest.fn(() => ({
+            getCollection: jest.fn(() => undefined),
+            addCollection: jest.fn(() => ({
+                find: jest.fn(() => []),
+                findOne: jest.fn(() => undefined),
+                insert: jest.fn(),
+                update: jest.fn(),
+                remove: jest.fn(),
+            })),
+        })),
+    },
 }));
 
 jest.mock('../registry', () => ({
@@ -25,6 +33,7 @@ jest.mock('../registry', () => ({
             },
         },
     })),
+    onReloadComplete: jest.fn(),
 }));
 
 jest.mock('getmac', () => jest.fn(() => '00:00:00:00:00:00'));
@@ -35,6 +44,7 @@ jest.mock('uuid', () => ({
 jest.mock('../configuration', () => ({
     getVersion: jest.fn(() => '1.0.0'),
     getLogLevel: jest.fn(() => 'info'),
+    onConfigFileChange: jest.fn(),
 }));
 
 describe('API Auth', () => {

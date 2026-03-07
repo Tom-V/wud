@@ -90,7 +90,7 @@ class Nomad extends Trigger {
      */
     async trigger(container: Container) {
         const logContainer = this.log.child({
-            container: fullName(container),
+            component: fullName(container),
         });
 
         const allocId = container.labels?.[this.configuration.alloclabel];
