@@ -140,6 +140,14 @@ describe('Docker Watcher', () => {
             };
             expect(() => docker.validateConfiguration(config)).not.toThrow();
         });
+
+        test('should validate configuration with includeprerelease option', async () => {
+            const config = {
+                socket: '/var/run/docker.sock',
+                includeprerelease: true,
+            };
+            expect(() => docker.validateConfiguration(config)).not.toThrow();
+        });
     });
 
     describe('Initialization', () => {
@@ -1004,6 +1012,192 @@ describe('Docker Watcher', () => {
 
             expect(result).toEqual({ tag: '1.3' });
         });
+
+        test('should exclude prerelease tags by default', async () => {
+            const container = {
+                includePrerelease: false,
+                image: {
+                    registry: { name: 'hub' },
+                    tag: { value: '1.2.3', semver: true },
+                    digest: { watch: false },
+                },
+            };
+            const mockRegistry = {
+                getTags: jest
+                    .fn()
+                    .mockResolvedValue(['1.2.4-rc1', '1.2.4', '1.2.3']),
+                isDigestToWatch: jest.fn(() => false),
+            };
+            registry.getState.mockReturnValue({
+                registry: { hub: mockRegistry },
+            });
+            mockTag.parse.mockImplementation((tag) => {
+                if (tag === '1.2.4-rc1') {
+                    return {
+                        major: 1,
+                        minor: 2,
+                        patch: 4,
+                        prerelease: ['rc1'],
+                    };
+                }
+                if (tag === '1.2.4' || tag === '1.2.3') {
+                    return { major: 1, minor: 2, patch: 4, prerelease: [] };
+                }
+                return null;
+            });
+            mockTag.isGreater.mockImplementation((t1, t2) => t1 === '1.2.4');
+
+            const result = await docker.findNewVersion(container, {
+                error: jest.fn(),
+                warn: jest.fn(),
+            });
+
+            expect(result).toEqual({ tag: '1.2.4' });
+        });
+
+        test('should keep prerelease tags when watcher opt-in is enabled', async () => {
+            const container = {
+                includePrerelease: true,
+                image: {
+                    registry: { name: 'hub' },
+                    tag: { value: '1.2.3', semver: true },
+                    digest: { watch: false },
+                },
+            };
+            const mockRegistry = {
+                getTags: jest.fn().mockResolvedValue(['1.2.4-rc1', '1.2.3']),
+                isDigestToWatch: jest.fn(() => false),
+            };
+            registry.getState.mockReturnValue({
+                registry: { hub: mockRegistry },
+            });
+            mockTag.parse.mockImplementation((tag) => {
+                if (tag === '1.2.4-rc1') {
+                    return {
+                        major: 1,
+                        minor: 2,
+                        patch: 4,
+                        prerelease: ['rc1'],
+                    };
+                }
+                if (tag === '1.2.3') {
+                    return { major: 1, minor: 2, patch: 3, prerelease: [] };
+                }
+                return null;
+            });
+            mockTag.isGreater.mockImplementation(
+                (t1, t2) => t1 === '1.2.4-rc1',
+            );
+
+            const result = await docker.findNewVersion(container, {
+                error: jest.fn(),
+                warn: jest.fn(),
+            });
+
+            expect(result).toEqual({ tag: '1.2.4-rc1' });
+        });
+
+        test('should keep current tag when only prerelease candidates exist and prereleases are disabled', async () => {
+            const container = {
+                includePrerelease: false,
+                image: {
+                    registry: { name: 'hub' },
+                    tag: { value: '1.2.3', semver: true },
+                    digest: { watch: false },
+                },
+            };
+            const mockRegistry = {
+                getTags: jest
+                    .fn()
+                    .mockResolvedValue(['1.2.4-rc1', '1.2.5-beta1']),
+                isDigestToWatch: jest.fn(() => false),
+            };
+            registry.getState.mockReturnValue({
+                registry: { hub: mockRegistry },
+            });
+            mockTag.parse.mockImplementation((tag) => {
+                if (tag === '1.2.4-rc1') {
+                    return {
+                        major: 1,
+                        minor: 2,
+                        patch: 4,
+                        prerelease: ['rc1'],
+                    };
+                }
+                if (tag === '1.2.5-beta1') {
+                    return {
+                        major: 1,
+                        minor: 2,
+                        patch: 5,
+                        prerelease: ['beta1'],
+                    };
+                }
+                if (tag === '1.2.3') {
+                    return { major: 1, minor: 2, patch: 3, prerelease: [] };
+                }
+                return null;
+            });
+            mockTag.isGreater.mockReturnValue(true);
+
+            const result = await docker.findNewVersion(container, {
+                error: jest.fn(),
+                warn: jest.fn(),
+            });
+
+            expect(result).toEqual({ tag: '1.2.3' });
+        });
+
+        test('should allow prerelease progression when prereleases are enabled', async () => {
+            const container = {
+                includePrerelease: true,
+                image: {
+                    registry: { name: 'hub' },
+                    tag: { value: '1.2.4-rc1', semver: true },
+                    digest: { watch: false },
+                },
+            };
+            const mockRegistry = {
+                getTags: jest
+                    .fn()
+                    .mockResolvedValue(['1.2.4-rc2', '1.2.4', '1.2.4-rc1']),
+                isDigestToWatch: jest.fn(() => false),
+            };
+            registry.getState.mockReturnValue({
+                registry: { hub: mockRegistry },
+            });
+            mockTag.parse.mockImplementation((tag) => {
+                if (tag === '1.2.4-rc1') {
+                    return {
+                        major: 1,
+                        minor: 2,
+                        patch: 4,
+                        prerelease: ['rc1'],
+                    };
+                }
+                if (tag === '1.2.4-rc2') {
+                    return {
+                        major: 1,
+                        minor: 2,
+                        patch: 4,
+                        prerelease: ['rc2'],
+                    };
+                }
+                if (tag === '1.2.4') {
+                    return { major: 1, minor: 2, patch: 4, prerelease: [] };
+                }
+                return null;
+            });
+            mockTag.isGreater.mockImplementation(
+                (t1, t2) => t1 === '1.2.4' || t1 === '1.2.4-rc2',
+            );
+
+            const result = await docker.findNewVersion(container, {
+                error: jest.fn(),
+                warn: jest.fn(),
+            });
+
+            expect(result).toEqual({ tag: '1.2.4-rc2' });
+        });
     });
 
     describe('Container Details', () => {
@@ -1069,6 +1263,250 @@ describe('Docker Watcher', () => {
 
             expect(mockImage.inspect).toHaveBeenCalled();
             expect(result).toBeDefined();
+        });
+
+        test('should default includePrerelease to false in normalized containers', async () => {
+            await docker.register('watcher', 'docker', 'test', {});
+            const container = {
+                Id: '123',
+                Image: 'nginx:1.0.0',
+                Names: ['/test-container'],
+                State: 'running',
+                Labels: {},
+            };
+            const imageDetails = {
+                Id: 'image123',
+                Architecture: 'amd64',
+                Os: 'linux',
+                Created: '2023-01-01',
+            };
+            mockImage.inspect.mockResolvedValue(imageDetails);
+            const mockRegistry = {
+                normalizeImage: jest.fn((img) => img),
+                getId: () => 'hub',
+                match: () => true,
+                isDigestToWatch: jest.fn(() => false),
+            };
+            registry.getState.mockReturnValue({
+                registry: { hub: mockRegistry },
+            });
+            const containerModule = await import('../../../model/container');
+            const validateContainer = containerModule.validate;
+            validateContainer.mockImplementation((value) => value);
+
+            const result = await docker.addImageDetailsToContainer(container);
+
+            expect(result.includePrerelease).toBe(false);
+        });
+
+        test('should let label opt in to prereleases over watcher default', async () => {
+            await docker.register('watcher', 'docker', 'test', {
+                includeprerelease: false,
+            });
+            const container = {
+                Id: '123',
+                Image: 'nginx:1.0.0',
+                Names: ['/test-container'],
+                State: 'running',
+                Labels: {
+                    'wud.tag.includeprerelease': 'true',
+                },
+            };
+            const imageDetails = {
+                Id: 'image123',
+                Architecture: 'amd64',
+                Os: 'linux',
+                Created: '2023-01-01',
+            };
+            mockImage.inspect.mockResolvedValue(imageDetails);
+            const mockRegistry = {
+                normalizeImage: jest.fn((img) => img),
+                getId: () => 'hub',
+                match: () => true,
+                isDigestToWatch: jest.fn(() => false),
+            };
+            registry.getState.mockReturnValue({
+                registry: { hub: mockRegistry },
+            });
+            const containerModule = await import('../../../model/container');
+            const validateContainer = containerModule.validate;
+            validateContainer.mockImplementation((value) => value);
+
+            const result = await docker.addImageDetailsToContainer(
+                container,
+                undefined,
+                undefined,
+                container.Labels['wud.tag.includeprerelease'],
+            );
+
+            expect(result.includePrerelease).toBe(true);
+        });
+
+        test('should let label opt out of prereleases over watcher opt-in', async () => {
+            await docker.register('watcher', 'docker', 'test', {
+                includeprerelease: true,
+            });
+            const container = {
+                Id: '123',
+                Image: 'nginx:1.0.0',
+                Names: ['/test-container'],
+                State: 'running',
+                Labels: {
+                    'wud.tag.includeprerelease': 'false',
+                },
+            };
+            const imageDetails = {
+                Id: 'image123',
+                Architecture: 'amd64',
+                Os: 'linux',
+                Created: '2023-01-01',
+            };
+            mockImage.inspect.mockResolvedValue(imageDetails);
+            const mockRegistry = {
+                normalizeImage: jest.fn((img) => img),
+                getId: () => 'hub',
+                match: () => true,
+                isDigestToWatch: jest.fn(() => false),
+            };
+            registry.getState.mockReturnValue({
+                registry: { hub: mockRegistry },
+            });
+            const containerModule = await import('../../../model/container');
+            const validateContainer = containerModule.validate;
+            validateContainer.mockImplementation((value) => value);
+
+            const result = await docker.addImageDetailsToContainer(
+                container,
+                undefined,
+                undefined,
+                container.Labels['wud.tag.includeprerelease'],
+            );
+
+            expect(result.includePrerelease).toBe(false);
+        });
+
+        test('should invalidate cached container when a wud label changes', async () => {
+            await docker.register('watcher', 'docker', 'test', {});
+            storeContainer.getContainer.mockReturnValue({
+                id: '123',
+                error: undefined,
+                labels: {
+                    'wud.tag.include': '^1\\.0\\..*$',
+                },
+                includeTags: '^1\\.0\\..*$',
+                includePrerelease: false,
+            });
+            const container = {
+                Id: '123',
+                Image: 'nginx:1.0.0',
+                Names: ['/test-container'],
+                State: 'running',
+                Labels: {
+                    'wud.tag.include': '^1\\.1\\..*$',
+                },
+            };
+            const imageDetails = {
+                Id: 'image123',
+                Architecture: 'amd64',
+                Os: 'linux',
+                Created: '2023-01-01',
+            };
+            mockImage.inspect.mockResolvedValue(imageDetails);
+            const mockRegistry = {
+                normalizeImage: jest.fn((img) => img),
+                getId: () => 'hub',
+                match: () => true,
+                isDigestToWatch: jest.fn(() => false),
+            };
+            registry.getState.mockReturnValue({
+                registry: { hub: mockRegistry },
+            });
+            const containerModule = await import('../../../model/container');
+            const validateContainer = containerModule.validate;
+            validateContainer.mockImplementation((value) => value);
+
+            const result = await docker.addImageDetailsToContainer(
+                container,
+                container.Labels['wud.tag.include'],
+            );
+
+            expect(mockImage.inspect).toHaveBeenCalled();
+            expect(result.includeTags).toBe('^1\\.1\\..*$');
+        });
+
+        test('should invalidate cached container when watcher default includePrerelease changes', async () => {
+            await docker.register('watcher', 'docker', 'test', {
+                includeprerelease: true,
+            });
+            storeContainer.getContainer.mockReturnValue({
+                id: '123',
+                error: undefined,
+                labels: {},
+                includePrerelease: false,
+            });
+            const container = {
+                Id: '123',
+                Image: 'nginx:1.0.0',
+                Names: ['/test-container'],
+                State: 'running',
+                Labels: {},
+            };
+            const imageDetails = {
+                Id: 'image123',
+                Architecture: 'amd64',
+                Os: 'linux',
+                Created: '2023-01-01',
+            };
+            mockImage.inspect.mockResolvedValue(imageDetails);
+            const mockRegistry = {
+                normalizeImage: jest.fn((img) => img),
+                getId: () => 'hub',
+                match: () => true,
+                isDigestToWatch: jest.fn(() => false),
+            };
+            registry.getState.mockReturnValue({
+                registry: { hub: mockRegistry },
+            });
+            const containerModule = await import('../../../model/container');
+            const validateContainer = containerModule.validate;
+            validateContainer.mockImplementation((value) => value);
+
+            const result = await docker.addImageDetailsToContainer(container);
+
+            expect(mockImage.inspect).toHaveBeenCalled();
+            expect(result.includePrerelease).toBe(true);
+        });
+
+        test('should reuse cached container when wud labels and defaults are unchanged', async () => {
+            await docker.register('watcher', 'docker', 'test', {
+                includeprerelease: false,
+            });
+            const cachedContainer = {
+                id: '123',
+                error: undefined,
+                labels: {
+                    'wud.tag.include': '^1\\.0\\..*$',
+                },
+                includePrerelease: false,
+            };
+            storeContainer.getContainer.mockReturnValue(cachedContainer);
+            const container = {
+                Id: '123',
+                Image: 'nginx:1.0.0',
+                Names: ['/test-container'],
+                State: 'running',
+                Labels: {
+                    'wud.tag.include': '^1\\.0\\..*$',
+                },
+            };
+
+            const result = await docker.addImageDetailsToContainer(
+                container,
+                container.Labels['wud.tag.include'],
+            );
+
+            expect(mockImage.inspect).not.toHaveBeenCalled();
+            expect(result).toBe(cachedContainer);
         });
 
         test('should handle container with implicit docker hub image (no domain)', async () => {

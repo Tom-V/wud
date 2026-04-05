@@ -16,6 +16,18 @@ describe('parse', () => {
             expected: { major: 1, minor: 2, patch: 3, prerelease: ['alpha1'] },
         },
         {
+            input: '0.8',
+            expected: { major: 0, minor: 8, patch: 0, prerelease: [] },
+        },
+        {
+            input: '0.8-rc1',
+            expected: { major: 0, minor: 8, patch: 0, prerelease: ['rc1'] },
+        },
+        {
+            input: 'v0.8-rc1',
+            expected: { major: 0, minor: 8, patch: 0, prerelease: ['rc1'] },
+        },
+        {
             input: '0.6.12-ls132',
             expected: { major: 0, minor: 6, patch: 12, prerelease: ['ls132'] },
         },
@@ -126,6 +138,24 @@ describe('isGreater', () => {
             expected: true,
             desc: 'beta vs alpha prerelease',
         },
+        {
+            v1: '0.8-rc1',
+            v2: '0.8',
+            expected: false,
+            desc: 'partial prerelease vs release',
+        },
+        {
+            v1: '0.8',
+            v2: '0.8-rc1',
+            expected: true,
+            desc: 'partial release vs prerelease',
+        },
+        {
+            v1: '0.8-rc2',
+            v2: '0.8-rc1',
+            expected: true,
+            desc: 'partial prerelease progression',
+        },
 
         // Invalid versions
         {
@@ -198,6 +228,12 @@ describe('diff', () => {
             v2: '1.2.3-beta1',
             expected: 'prerelease',
             desc: 'different prereleases',
+        },
+        {
+            v1: '0.8-rc1',
+            v2: '0.8-rc2',
+            expected: 'prerelease',
+            desc: 'different partial prereleases',
         },
 
         // Invalid versions

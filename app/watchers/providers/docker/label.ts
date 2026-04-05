@@ -19,6 +19,11 @@ export const wudTagInclude = 'wud.tag.include';
 export const wudTagExclude = 'wud.tag.exclude';
 
 /**
+ * Should prerelease tags be considered for updates? (true | false).
+ */
+export const wudTagIncludePrerelease = 'wud.tag.includeprerelease';
+
+/**
  * Optional transform function to apply to the tag.
  */
 export const wudTagTransform = 'wud.tag.transform';

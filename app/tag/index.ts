@@ -5,6 +5,35 @@ import semver from 'semver';
 import log from '../log';
 
 /**
+ * Parse partial semver prereleases with a missing patch number.
+ * Examples: 0.8-rc1 -> 0.8.0-rc1, v0.8-beta1 -> 0.8.0-beta1.
+ * This preserves prerelease metadata that semver.coerce would otherwise drop.
+ * Other non-standard versions are handled by the later semver.coerce fallback.
+ */
+function parsePartialSemverWithPrerelease(rawVersion) {
+    const versionWithoutPrefix =
+        rawVersion.startsWith('v') || rawVersion.startsWith('V')
+            ? rawVersion.substring(1)
+            : rawVersion;
+    const prereleaseSeparatorIndex = versionWithoutPrefix.indexOf('-');
+    if (prereleaseSeparatorIndex === -1) {
+        return null;
+    }
+
+    const versionParts = versionWithoutPrefix
+        .substring(0, prereleaseSeparatorIndex)
+        .split('.');
+    if (versionParts.length !== 2) {
+        return null;
+    }
+
+    const prerelease = versionWithoutPrefix.substring(
+        prereleaseSeparatorIndex + 1,
+    );
+    return semver.parse(`${versionParts.join('.')}.0-${prerelease}`);
+}
+
+/**
  * Parse a string to a semver (return null is it cannot be parsed as a valid semver).
  * @param rawVersion
  * @returns {*|SemVer}
@@ -17,6 +46,12 @@ export function parse(rawVersion) {
     // Hurrah!
     if (rawVersionSemver !== null) {
         return rawVersionSemver;
+    }
+
+    const partialSemverWithPrerelease =
+        parsePartialSemverWithPrerelease(rawVersion);
+    if (partialSemverWithPrerelease !== null) {
+        return partialSemverWithPrerelease;
     }
 
     // Last chance; try to coerce (all data behind patch digit will be lost).

@@ -75,6 +75,20 @@ function renderBatch(template: string, containers: Container[]) {
 class Trigger extends Component {
     public configuration: TriggerConfiguration = {};
 
+    static readonly thresholdAllowedDiffs: Record<
+        string,
+        string[] | undefined
+    > = {
+        all: undefined,
+        major: ['major', 'minor', 'patch', 'prerelease'],
+        minor: ['minor', 'patch', 'prerelease'],
+        patch: ['patch', 'prerelease'],
+        prerelease: ['prerelease'],
+        'major-only': ['major'],
+        'minor-only': ['minor'],
+        'patch-only': ['patch'],
+    };
+
     /**
      * Return true if update reaches trigger threshold.
      * @param containerResult
@@ -90,27 +104,11 @@ class Trigger extends Component {
             containerResult.updateKind.semverDiff &&
             containerResult.updateKind.semverDiff !== 'unknown'
         ) {
-            switch (threshold) {
-                case 'major-only':
-                    thresholdPassing =
-                        containerResult.updateKind.semverDiff == 'major';
-                    break;
-                case 'minor-only':
-                    thresholdPassing =
-                        containerResult.updateKind.semverDiff == 'minor';
-                    break;
-                case 'minor':
-                    thresholdPassing =
-                        containerResult.updateKind.semverDiff !== 'major';
-                    break;
-                case 'patch':
-                    thresholdPassing =
-                        containerResult.updateKind.semverDiff !== 'major' &&
-                        containerResult.updateKind.semverDiff !== 'minor';
-                    break;
-                default:
-                    thresholdPassing = true;
-            }
+            const allowedDiffs =
+                Trigger.thresholdAllowedDiffs[threshold.toLowerCase()];
+            thresholdPassing = allowedDiffs
+                ? allowedDiffs.includes(containerResult.updateKind.semverDiff)
+                : true;
         }
         return thresholdPassing;
     }
@@ -145,6 +143,12 @@ class Trigger extends Component {
                     break;
                 case 'patch':
                     includeOrExcludeTrigger.threshold = 'patch';
+                    break;
+                case 'prerelease':
+                    includeOrExcludeTrigger.threshold = 'prerelease';
+                    break;
+                case 'patch-only':
+                    includeOrExcludeTrigger.threshold = 'patch-only';
                     break;
                 default:
                     includeOrExcludeTrigger.threshold = 'all';
@@ -364,8 +368,10 @@ class Trigger extends Component {
                     'major',
                     'minor',
                     'patch',
+                    'prerelease',
                     'major-only',
                     'minor-only',
+                    'patch-only',
                 )
                 .default('all'),
             mode: this.joi

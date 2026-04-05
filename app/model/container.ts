@@ -49,6 +49,7 @@ export interface Container {
     watcher: string;
     includeTags?: string;
     excludeTags?: string;
+    includePrerelease?: boolean;
     transformTags?: string;
     linkTemplate?: string;
     link?: string;
@@ -75,6 +76,7 @@ const schema = joi.object({
     watcher: joi.string().min(1).required(),
     includeTags: joi.string(),
     excludeTags: joi.string(),
+    includePrerelease: joi.boolean(),
     transformTags: joi.string(),
     linkTemplate: joi.string(),
     link: joi.string(),
@@ -301,17 +303,17 @@ function addUpdateKindProperty(container: Container) {
                         );
                         switch (semverDiff) {
                             case 'major':
-                            case 'premajor':
                                 semverDiffWud = 'major';
                                 break;
                             case 'minor':
-                            case 'preminor':
                                 semverDiffWud = 'minor';
                                 break;
                             case 'patch':
-                            case 'prepatch':
                                 semverDiffWud = 'patch';
                                 break;
+                            case 'premajor':
+                            case 'preminor':
+                            case 'prepatch':
                             case 'prerelease':
                                 semverDiffWud = 'prerelease';
                                 break;

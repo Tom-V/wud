@@ -16,6 +16,7 @@ import {
     wudWatch,
     wudTagInclude,
     wudTagExclude,
+    wudTagIncludePrerelease,
     wudTagTransform,
     wudWatchDigest,
     wudLinkTemplate,
@@ -47,6 +48,7 @@ export interface DockerWatcherConfiguration extends ComponentConfiguration {
     jitter: number;
     watchbydefault: boolean;
     watchall: boolean;
+    includeprerelease: boolean;
     watchdigest?: any;
     watchevents: boolean;
     watchatstart: boolean;
@@ -63,6 +65,67 @@ const DEBOUNCED_WATCH_CRON_MS = 5000;
  */
 function getRegistries() {
     return registry.getState().registry;
+}
+
+function isPrereleaseTag(transformTags: string | undefined, tag: string) {
+    const parsedTag = parseSemver(transformTag(transformTags, tag));
+    return (
+        parsedTag !== null &&
+        parsedTag.prerelease !== undefined &&
+        parsedTag.prerelease.length > 0
+    );
+}
+
+function parseBooleanLabel(
+    labelValue: string | undefined,
+): boolean | undefined {
+    return labelValue !== undefined && labelValue !== ''
+        ? labelValue.toLowerCase() === 'true'
+        : undefined;
+}
+
+function getWudLabels(labels: Record<string, string> | undefined = {}) {
+    return Object.fromEntries(
+        Object.entries(labels)
+            .filter(([key]) => key.startsWith('wud.'))
+            .sort(([key1], [key2]) => key1.localeCompare(key2)),
+    );
+}
+
+function haveSameLabels(
+    labels1: Record<string, string>,
+    labels2: Record<string, string>,
+) {
+    const labelKeys1 = Object.keys(labels1);
+    const labelKeys2 = Object.keys(labels2);
+
+    if (labelKeys1.length !== labelKeys2.length) {
+        return false;
+    }
+
+    return labelKeys1.every((key) => labels1[key] === labels2[key]);
+}
+
+function isCachedContainerValid(
+    containerInStore: Container,
+    currentLabels: Record<string, string> | undefined,
+    watcherIncludePrerelease: boolean,
+) {
+    const currentWudLabels = getWudLabels(currentLabels);
+    const cachedWudLabels = getWudLabels(containerInStore.labels);
+
+    if (!haveSameLabels(currentWudLabels, cachedWudLabels)) {
+        return false;
+    }
+
+    const currentIncludePrerelease =
+        parseBooleanLabel(currentLabels?.[wudTagIncludePrerelease]) ??
+        watcherIncludePrerelease;
+
+    return (
+        (containerInStore.includePrerelease ?? false) ===
+        currentIncludePrerelease
+    );
 }
 
 /**
@@ -142,6 +205,12 @@ function getTagCandidates(
                 parseSemver(transformTag(container.transformTags, tag)) !==
                 null,
         );
+
+        if (!container.includePrerelease) {
+            filteredTags = filteredTags.filter(
+                (tag) => !isPrereleaseTag(container.transformTags, tag),
+            );
+        }
 
         // Remove prefix and suffix (keep only digits and dots)
         const numericPart = container.image.tag.value.match(/(\d+(\.\d+)*)/);
@@ -265,9 +334,7 @@ function isContainerToWatch(
     wudWatchLabelValue: string,
     watchByDefault: boolean,
 ) {
-    return wudWatchLabelValue !== undefined && wudWatchLabelValue !== ''
-        ? wudWatchLabelValue.toLowerCase() === 'true'
-        : watchByDefault;
+    return parseBooleanLabel(wudWatchLabelValue) ?? watchByDefault;
 }
 
 /**
@@ -295,6 +362,7 @@ export class Docker extends Watcher {
             jitter: this.joi.number().integer().min(0).default(60000),
             watchbydefault: this.joi.boolean().default(true),
             watchall: this.joi.boolean().default(false),
+            includeprerelease: this.joi.boolean().default(false),
             watchdigest: this.joi.any(),
             watchevents: this.joi.boolean().default(true),
             watchatstart: this.joi.boolean().default(true),
@@ -625,6 +693,7 @@ export class Docker extends Watcher {
                 container,
                 container.Labels[wudTagInclude],
                 container.Labels[wudTagExclude],
+                container.Labels[wudTagIncludePrerelease],
                 container.Labels[wudTagTransform],
                 container.Labels[wudLinkTemplate],
                 container.Labels[wudDisplayName],
@@ -773,6 +842,7 @@ export class Docker extends Watcher {
         container: any,
         includeTags: string,
         excludeTags: string,
+        includePrereleaseLabel: string,
         transformTags: string,
         linkTemplate: string,
         displayName: string,
@@ -786,7 +856,12 @@ export class Docker extends Watcher {
         const containerInStore = storeContainer.getContainer(containerId);
         if (
             containerInStore !== undefined &&
-            containerInStore.error === undefined
+            containerInStore.error === undefined &&
+            isCachedContainerValid(
+                containerInStore,
+                container.Labels,
+                this.configuration.includeprerelease,
+            )
         ) {
             this.log.debug(`Container ${containerInStore.id} already in store`);
             return containerInStore;
@@ -856,6 +931,9 @@ export class Docker extends Watcher {
                 parsedImage.path,
             );
 
+        const includePrerelease =
+            parseBooleanLabel(includePrereleaseLabel) ??
+            this.configuration.includeprerelease;
         return this.normalizeContainer({
             id: containerId,
             name: containerName,
@@ -863,6 +941,7 @@ export class Docker extends Watcher {
             watcher: this.name,
             includeTags,
             excludeTags,
+            includePrerelease,
             transformTags,
             linkTemplate,
             displayName,

@@ -294,6 +294,12 @@ const isThresholdReachedTestCases = [
         kind: 'tag',
     },
     {
+        result: true,
+        threshold: 'major',
+        change: 'prerelease',
+        kind: 'tag',
+    },
+    {
         result: false,
         threshold: 'minor',
         change: 'major',
@@ -312,6 +318,12 @@ const isThresholdReachedTestCases = [
         kind: 'tag',
     },
     {
+        result: true,
+        threshold: 'minor',
+        change: 'prerelease',
+        kind: 'tag',
+    },
+    {
         result: false,
         threshold: 'patch',
         change: 'major',
@@ -327,6 +339,60 @@ const isThresholdReachedTestCases = [
         result: true,
         threshold: 'patch',
         change: 'patch',
+        kind: 'tag',
+    },
+    {
+        result: true,
+        threshold: 'patch',
+        change: 'prerelease',
+        kind: 'tag',
+    },
+    {
+        result: false,
+        threshold: 'prerelease',
+        change: 'patch',
+        kind: 'tag',
+    },
+    {
+        result: true,
+        threshold: 'prerelease',
+        change: 'prerelease',
+        kind: 'tag',
+    },
+    {
+        result: true,
+        threshold: 'major-only',
+        change: 'major',
+        kind: 'tag',
+    },
+    {
+        result: false,
+        threshold: 'major-only',
+        change: 'prerelease',
+        kind: 'tag',
+    },
+    {
+        result: false,
+        threshold: 'minor-only',
+        change: 'patch',
+        kind: 'tag',
+    },
+    {
+        result: true,
+        threshold: 'minor-only',
+        change: 'minor',
+        kind: 'tag',
+    },
+    {
+        result: true,
+        threshold: 'patch-only',
+        change: 'patch',
+        kind: 'tag',
+    },
+    {
+        result: false,
+        threshold: 'patch-only',
+        change: 'prerelease',
         kind: 'tag',
     },
     {
@@ -350,6 +416,12 @@ const isThresholdReachedTestCases = [
     {
         result: true,
         threshold: 'patch',
+        change: 'unknown',
+        kind: 'digest',
+    },
+    {
+        result: true,
+        threshold: 'prerelease',
         change: 'unknown',
         kind: 'digest',
     },
@@ -428,6 +500,46 @@ test('mustTrigger should still honor trigger exclude when include by default is 
         }),
     ).toBeFalsy();
 });
+
+test.each([
+    ['test-trigger:prerelease', 'prerelease'],
+    ['test-trigger:patch-only', 'patch-only'],
+])(
+    'parseIncludeOrIncludeTriggerString should parse %s',
+    (input, expectedThreshold) => {
+        expect(Trigger.parseIncludeOrIncludeTriggerString(input)).toEqual({
+            id: 'test-trigger',
+            threshold: expectedThreshold,
+        });
+    },
+);
+
+test('isTriggerIncludedOrExcluded should support multiple trigger ids with thresholds', () => {
+    trigger.getId = jest.fn().mockReturnValue('smtp.gmail');
+    expect(
+        trigger.isTriggerIncludedOrExcluded(
+            {
+                updateKind: {
+                    kind: 'tag',
+                    semverDiff: 'prerelease',
+                },
+            },
+            'smtp.gmail:prerelease,dockercompose.local:minor',
+        ),
+    ).toBe(true);
+});
+
+test.each(['prerelease', 'patch-only'])(
+    'validateConfiguration should accept threshold %s',
+    (threshold) => {
+        expect(
+            trigger.validateConfiguration({
+                ...configurationValid,
+                threshold,
+            }),
+        ).toMatchObject({ threshold });
+    },
+);
 
 test('renderSimpleTitle should replace placeholders when called', async () => {
     expect(

@@ -117,6 +117,37 @@ test('model should flag updateAvailable when tag is different', async () => {
     expect(containerValidated.updateAvailable).toBeTruthy();
 });
 
+test('model should validate includePrerelease when provided', async () => {
+    const containerValidated = container.validate({
+        id: 'container-123456789',
+        name: 'test',
+        watcher: 'test',
+        includePrerelease: false,
+        image: {
+            id: 'image-123456789',
+            registry: {
+                name: 'hub',
+                url: 'https://hub',
+            },
+            name: 'organization/image',
+            tag: {
+                value: '1.0.0',
+                semver: true,
+            },
+            digest: {
+                watch: false,
+                repo: undefined,
+            },
+            architecture: 'arch',
+            os: 'os',
+        },
+        result: {
+            tag: '1.0.1',
+        },
+    });
+    expect(containerValidated.includePrerelease).toBe(false);
+});
+
 test('model should not flag updateAvailable when tag is equal', async () => {
     const containerValidated = container.validate({
         id: 'container-123456789',
@@ -462,6 +493,75 @@ test('addUpdateKindProperty should detect prerelease semver update', async () =>
         kind: 'tag',
         localValue: '1.0.0-test1',
         remoteValue: '1.0.0-test2',
+        semverDiff: 'prerelease',
+    });
+});
+
+test('addUpdateKindProperty should classify stable to prepatch as prerelease', async () => {
+    const { testable_addUpdateKindProperty: addUpdateKindProperty } = container;
+    const containerObject = {
+        updateAvailable: true,
+        image: {
+            tag: {
+                value: '1.2.3',
+                semver: true,
+            },
+        },
+        result: {
+            tag: '1.2.4-rc1',
+        },
+    };
+    addUpdateKindProperty(containerObject);
+    expect(containerObject.updateKind).toEqual({
+        kind: 'tag',
+        localValue: '1.2.3',
+        remoteValue: '1.2.4-rc1',
+        semverDiff: 'prerelease',
+    });
+});
+
+test('addUpdateKindProperty should classify stable to preminor as prerelease', async () => {
+    const { testable_addUpdateKindProperty: addUpdateKindProperty } = container;
+    const containerObject = {
+        updateAvailable: true,
+        image: {
+            tag: {
+                value: '1.2.3',
+                semver: true,
+            },
+        },
+        result: {
+            tag: '1.3.0-beta1',
+        },
+    };
+    addUpdateKindProperty(containerObject);
+    expect(containerObject.updateKind).toEqual({
+        kind: 'tag',
+        localValue: '1.2.3',
+        remoteValue: '1.3.0-beta1',
+        semverDiff: 'prerelease',
+    });
+});
+
+test('addUpdateKindProperty should classify stable to premajor as prerelease', async () => {
+    const { testable_addUpdateKindProperty: addUpdateKindProperty } = container;
+    const containerObject = {
+        updateAvailable: true,
+        image: {
+            tag: {
+                value: '1.2.3',
+                semver: true,
+            },
+        },
+        result: {
+            tag: '2.0.0-rc1',
+        },
+    };
+    addUpdateKindProperty(containerObject);
+    expect(containerObject.updateKind).toEqual({
+        kind: 'tag',
+        localValue: '1.2.3',
+        remoteValue: '2.0.0-rc1',
         semverDiff: 'prerelease',
     });
 });
