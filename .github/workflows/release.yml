@@ -1,0 +1,105 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Release version tag (example v0.7.0)
+        required: true
+        type: string
+      image_name:
+        description: Docker image name
+        required: false
+        default: wud
+        type: string
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: release-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  publish-images:
+    name: publish-images
+    runs-on: ubuntu-22.04
+    timeout-minutes: 60
+    env:
+      RELEASE_VERSION: ${{ github.event.inputs.version }}
+      DOCKER_PLATFORMS: linux/arm64/v8,linux/amd64
+      IMAGE_NAME: ${{ github.event.inputs.image_name }}
+      DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
+      DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
+      GITHUB_USERNAME: ${{ secrets.GITHUB_USERNAME }}
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate required secrets
+        shell: bash
+        run: |
+          for required in DOCKER_USERNAME DOCKER_PASSWORD GITHUB_USERNAME GITHUB_TOKEN; do
+            if [ -z "${!required}" ]; then
+              echo "Missing required secret: $required"
+              exit 1
+            fi
+          done
+
+      - name: Validate version input
+        shell: bash
+        run: |
+          if [ -z "$RELEASE_VERSION" ]; then
+            echo "Release version input is required"
+            exit 1
+          fi
+
+      - name: Derive release tags
+        shell: bash
+        run: |
+          IMAGE_VERSION="$RELEASE_VERSION"
+          IMAGE_VERSION_MINOR=$(echo "$IMAGE_VERSION" | sed -rn 's/^(v?[[:digit:]]+\.[[:digit:]]+)\.([[:digit:]]+)(.*)/\1/p')
+          IMAGE_VERSION_MAJOR=$(echo "$IMAGE_VERSION" | sed -rn 's/^(v?[[:digit:]]+)\.[[:digit:]]+\.([[:digit:]]+)(.*)/\1/p')
+
+          if [ -z "$IMAGE_VERSION_MINOR" ] || [ -z "$IMAGE_VERSION_MAJOR" ]; then
+            echo "Version must match semver format like v0.7.0 or 0.7.0"
+            exit 1
+          fi
+
+          {
+            echo "IMAGE_VERSION=$IMAGE_VERSION"
+            echo "IMAGE_VERSION_MINOR=$IMAGE_VERSION_MINOR"
+            echo "IMAGE_VERSION_MAJOR=$IMAGE_VERSION_MAJOR"
+          } >> "$GITHUB_ENV"
+
+      - name: Setup QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ env.DOCKER_USERNAME }}
+          password: ${{ env.DOCKER_PASSWORD }}
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ env.GITHUB_USERNAME }}
+          password: ${{ env.GITHUB_TOKEN }}
+
+      - name: Build and push release images
+        shell: bash
+        run: |
+          DOCKER_TAGS="-t ${DOCKER_USERNAME}/${IMAGE_NAME}:${IMAGE_VERSION} -t ghcr.io/${GITHUB_USERNAME}/${IMAGE_NAME}:${IMAGE_VERSION}"
+          DOCKER_TAGS="${DOCKER_TAGS} -t ${DOCKER_USERNAME}/${IMAGE_NAME}:${IMAGE_VERSION_MAJOR} -t ghcr.io/${GITHUB_USERNAME}/${IMAGE_NAME}:${IMAGE_VERSION_MAJOR}"
+          DOCKER_TAGS="${DOCKER_TAGS} -t ${DOCKER_USERNAME}/${IMAGE_NAME}:${IMAGE_VERSION_MINOR} -t ghcr.io/${GITHUB_USERNAME}/${IMAGE_NAME}:${IMAGE_VERSION_MINOR}"
+          DOCKER_TAGS="${DOCKER_TAGS} -t ${DOCKER_USERNAME}/${IMAGE_NAME}:latest -t ghcr.io/${GITHUB_USERNAME}/${IMAGE_NAME}:latest"
+
+          echo "Building and pushing ${DOCKER_TAGS}"
+          docker buildx build --push --platform "${DOCKER_PLATFORMS}" --build-arg WUD_VERSION="${IMAGE_VERSION}" ${DOCKER_TAGS} .
