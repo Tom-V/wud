@@ -1,6 +1,6 @@
-// @ts-nocheck
-import axios from 'axios';
+import axios, { AxiosRequestConfig } from 'axios';
 import Trigger from '../Trigger';
+import { Container } from '../../../model/container';
 
 /**
  * Ntfy Trigger implementation
@@ -30,7 +30,6 @@ class Ntfy extends Trigger {
 
     /**
      * Sanitize sensitive data
-     * @returns {*}
      */
     maskConfiguration() {
         return {
@@ -47,10 +46,8 @@ class Ntfy extends Trigger {
 
     /**
      * Send an HTTP Request to Ntfy.
-     * @param container the container
-     * @returns {Promise<void>}
      */
-    async trigger(container) {
+    async trigger(container: Container) {
         return this.sendHttpRequest({
             topic: this.configuration.topic,
             title: this.renderSimpleTitle(container),
@@ -61,10 +58,8 @@ class Ntfy extends Trigger {
 
     /**
      * Send an HTTP Request to Ntfy.
-     * @param containers
-     * @returns {Promise<*>}
      */
-    async triggerBatch(containers) {
+    async triggerBatch(containers: Container[]) {
         return this.sendHttpRequest({
             topic: this.configuration.topic,
             title: this.renderBatchTitle(containers),
@@ -75,11 +70,14 @@ class Ntfy extends Trigger {
 
     /**
      * Send http request to Ntfy.
-     * @param body
-     * @returns {Promise<*>}
      */
-    async sendHttpRequest(body) {
-        const options = {
+    async sendHttpRequest(body: {
+        topic: string;
+        title: string;
+        message: string;
+        priority?: number;
+    }) {
+        const options: AxiosRequestConfig = {
             method: 'POST',
             url: this.configuration.url,
             headers: {

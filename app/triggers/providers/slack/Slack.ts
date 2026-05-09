@@ -1,6 +1,6 @@
-// @ts-nocheck
 import { WebClient } from '@slack/web-api';
 import Trigger from '../Trigger';
+import { Container } from '../../../model/container';
 
 /*
  * Slack Trigger implementation
@@ -30,10 +30,11 @@ class Slack extends Trigger {
         };
     }
 
+    private client: WebClient;
     /*
      * Init trigger.
      */
-    initTrigger() {
+    async initTrigger() {
         this.client = new WebClient(this.configuration.token);
     }
 
@@ -43,25 +44,27 @@ class Slack extends Trigger {
      * @param image the image
      * @returns {Promise<void>}
      */
-    async trigger(container) {
+    async trigger(container: Container) {
         const body = this.renderSimpleBody(container);
 
         if (this.configuration.disabletitle) {
-            return this.sendMessage(body);
+            await this.sendMessage(body);
+            return;
         }
 
         const title = this.renderSimpleTitle(container);
-        return this.sendMessage(`*${title}*\n\n${body}`);
+        await this.sendMessage(`*${title}*\n\n${body}`);
     }
 
-    async triggerBatch(containers) {
+    async triggerBatch(containers: Container[]) {
         const body = this.renderBatchBody(containers);
         if (this.configuration.disabletitle) {
-            return this.sendMessage(body);
+            await this.sendMessage(body);
+            return;
         }
 
         const title = this.renderBatchTitle(containers);
-        return this.sendMessage(`*${title}*\n\n${body}`);
+        await this.sendMessage(`*${title}*\n\n${body}`);
     }
 
     /**

@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * WUD supported Docker labels.
  */

@@ -1,6 +1,6 @@
-// @ts-nocheck
 import nodemailer from 'nodemailer';
 import Trigger from '../Trigger';
+import SMTPConnection from 'nodemailer/lib/smtp-connection';
 
 /**
  * SMTP Trigger implementation
@@ -70,7 +70,6 @@ class Smtp extends Trigger {
 
     /**
      * Sanitize sensitive data
-     * @returns {*}
      */
     maskConfiguration() {
         return {
@@ -85,11 +84,13 @@ class Smtp extends Trigger {
         };
     }
 
+    private transporter: nodemailer.Transporter;
+
     /**
      * Init trigger.
      */
-    initTrigger() {
-        let auth;
+    async initTrigger() {
+        let auth: SMTPConnection.AuthenticationType;
         if (this.configuration.user || this.configuration.pass) {
             auth = {
                 user: this.configuration.user,
@@ -111,9 +112,6 @@ class Smtp extends Trigger {
 
     /**
      * Send a mail with new container version details.
-     *
-     * @param container the container
-     * @returns {Promise<void>}
      */
     async trigger(container) {
         return this.transporter.sendMail({
@@ -126,8 +124,6 @@ class Smtp extends Trigger {
 
     /**
      * Send a mail with new container versions details.
-     * @param containers
-     * @returns {Promise<void>}
      */
     async triggerBatch(containers) {
         return this.transporter.sendMail({

@@ -50,6 +50,9 @@ export interface MqqtConfiguration extends TriggerConfiguration {
  * MQTT Trigger implementation
  */
 class Mqtt extends Trigger {
+    hass?: Hass;
+    client!: mqtt.MqttClient;
+
     /**
      * Get the Trigger configuration schema.
      */

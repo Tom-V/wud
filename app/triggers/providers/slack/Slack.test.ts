@@ -52,12 +52,13 @@ test('initTrigger should init Slack client', async () => {
 
 test('trigger should format text as expected', async () => {
     slack.configuration = configurationValid;
+    const postMessage = jest.fn((conf) => conf);
     slack.client = {
         chat: {
-            postMessage: (conf) => conf,
+            postMessage,
         },
     };
-    const response = await slack.trigger({
+    await slack.trigger({
         id: '31a61a8305ef1fc9a71fa4f20a68d7ec88b28e32303bbc4a5f192e851165b816',
         name: 'homeassistant',
         watcher: 'local',
@@ -89,9 +90,10 @@ test('trigger should format text as expected', async () => {
             remoteValue: '2.0.0',
         },
     });
-    expect(response.text).toEqual(
-        '*New tag found for container homeassistant*\n\nContainer homeassistant running with tag 1.0.0 can be updated to tag 2.0.0\nhttps://test-2.0.0/changelog',
-    );
+    expect(postMessage).toHaveBeenCalledWith({
+        channel: 'channel',
+        text: '*New tag found for container homeassistant*\n\nContainer homeassistant running with tag 1.0.0 can be updated to tag 2.0.0\nhttps://test-2.0.0/changelog',
+    });
 });
 
 test('should send message with correct text', async () => {
