@@ -16,14 +16,12 @@ jest.mock('../../../registry');
 jest.mock('../../../model/container');
 jest.mock('../../../tag');
 jest.mock('../../../prometheus/watcher');
-jest.mock('parse-docker-image-name');
 jest.mock('fs');
 
 import mockDockerode from 'dockerode';
 import mockCron from 'node-cron';
 import mockDebounce from 'just-debounce';
 import mockFs from 'fs';
-import mockParse from 'parse-docker-image-name';
 import * as mockTag from '../../../tag';
 import * as mockPrometheus from '../../../prometheus/watcher';
 
@@ -91,13 +89,6 @@ describe('Docker Watcher', () => {
         // Setup prometheus mock
         const mockGauge = { set: jest.fn() };
         mockPrometheus.getWatchContainerGauge.mockReturnValue(mockGauge);
-
-        // Setup parse mock
-        mockParse.mockReturnValue({
-            domain: 'docker.io',
-            path: 'library/nginx',
-            tag: '1.0.0',
-        });
 
         // Setup fullName mock
         fullName.mockReturnValue('test_container');
@@ -554,11 +545,6 @@ describe('Docker Watcher', () => {
                 Os: 'linux',
                 Created: '2023-01-01',
                 RepoDigests: ['ghcr.io/library/nginx@sha256:abc123'],
-            });
-            mockParse.mockReturnValue({
-                domain: 'ghcr.io',
-                path: 'library/nginx',
-                tag: '1.0.0',
             });
             const mockRegistry = {
                 normalizeImage: jest.fn((image) => image),
@@ -1526,13 +1512,6 @@ describe('Docker Watcher', () => {
                 Id: 'image123',
             };
             mockImage.inspect.mockResolvedValue(imageDetails);
-            // Mock parse to return undefined domain (simulating parse-docker-image-name behavior)
-            mockParse.mockReturnValue({
-                domain: undefined,
-                path: 'prom/prometheus',
-                tag: 'v3.8.0',
-            });
-
             // Mock registry to handle unknown/docker hub
             const mockRegistry = {
                 normalizeImage: jest.fn((img) => img),
@@ -1556,8 +1535,6 @@ describe('Docker Watcher', () => {
             const result = await docker.addImageDetailsToContainer(container);
 
             expect(result).toBeDefined();
-            // Verify parse was called
-            expect(mockParse).toHaveBeenCalledWith('prom/prometheus:v3.8.0');
         });
 
         test('should handle container with SHA256 image', async () => {

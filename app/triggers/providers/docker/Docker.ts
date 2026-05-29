@@ -1,4 +1,3 @@
-import parse from 'parse-docker-image-name';
 import Dockerode from 'dockerode';
 import Trigger from '../Trigger';
 import { getState } from '../../../registry';
@@ -6,6 +5,7 @@ import { Container, ContainerImage, fullName } from '../../../model/container';
 import { Docker as DockerWatcher } from '../../../watchers/providers/docker/Docker';
 import Registry from '../../../registries/Registry';
 import { Logger } from '../../../log';
+import { parseDockerImageName } from '../../../watchers/providers/docker/image';
 
 /**
  * Replace a Docker container with an updated one.
@@ -88,7 +88,7 @@ class Docker extends Trigger {
                     if (!image.RepoTags || image.RepoTags.length === 0) {
                         return false;
                     }
-                    const imageParsed = parse(image.RepoTags[0]);
+                    const imageParsed = parseDockerImageName(image.RepoTags[0]);
                     const imageNormalized = registry.normalizeImage({
                         registry: {
                             url: imageParsed.domain ? imageParsed.domain : '',

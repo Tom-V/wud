@@ -4,7 +4,6 @@ import Joi from 'joi';
 import JoiCronExpression from 'joi-cron-expression';
 const joi = JoiCronExpression(Joi);
 import cron, { ScheduledTask } from 'node-cron';
-import parse from 'parse-docker-image-name';
 import debounce from 'just-debounce';
 import {
     parse as parseSemver,
@@ -25,6 +24,7 @@ import {
     wudTriggerInclude,
     wudTriggerExclude,
 } from './label';
+import { parseDockerImageName } from './image';
 import * as storeContainer from '../../../store/container';
 import {
     validate as validateContainer,
@@ -900,17 +900,8 @@ export class Docker extends Watcher {
             // Get the first repo tag (better than nothing ;)
             [imageNameToParse] = image.RepoTags;
         }
-        let parsedImage = parse(imageNameToParse);
-        const tagName =
-            parsedImage && parsedImage.tag ? parsedImage.tag : 'latest';
-
-        if (!parsedImage) {
-            parsedImage = {
-                domain: '',
-                path: imageNameToParse,
-                tag: tagName,
-            };
-        }
+        const parsedImage = parseDockerImageName(imageNameToParse);
+        const tagName = parsedImage.tag ? parsedImage.tag : 'latest';
 
         const registryProvider = Object.values(getRegistries()).find(
             (registry) => registry.match(parsedImage.domain),

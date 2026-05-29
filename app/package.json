@@ -42,7 +42,6 @@
         "node-cron": "4.2.1",
         "nodemailer": "^9.0.3",
         "openid-client": "6.8.2",
-        "parse-docker-image-name": "3.0.0",
         "pass": "0.2.0",
         "passport": "0.7.0",
         "passport-anonymous": "1.0.1",
