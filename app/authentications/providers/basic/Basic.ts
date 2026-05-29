@@ -1,7 +1,7 @@
 // @ts-nocheck
-import passJs from 'pass';
 import BasicStrategy from './BasicStrategy';
 import Authentication from '../Authentication';
+import { validateHtpasswdHash } from './htpasswd';
 
 /**
  * Htpasswd authentication.
@@ -53,15 +53,17 @@ class Basic extends Authentication {
         }
 
         // Different password? => reject
-        passJs.validate(pass, this.configuration.hash, (err, success) => {
-            if (success) {
-                done(null, {
-                    username: this.configuration.user,
-                });
-            } else {
-                done(null, false);
-            }
-        });
+        validateHtpasswdHash(pass, this.configuration.hash)
+            .then((success) => {
+                if (success) {
+                    done(null, {
+                        username: this.configuration.user,
+                    });
+                } else {
+                    done(null, false);
+                }
+            })
+            .catch(() => done(null, false));
     }
 }
 

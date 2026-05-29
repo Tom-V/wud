@@ -44,18 +44,13 @@ describe('Basic Authentication', () => {
     });
 
     test('should authenticate valid user', async () => {
-        const { default: passJs } = await import('pass');
         basic.configuration = {
             user: 'testuser',
-            hash: '$2b$10$test.hash.value',
+            hash: '{SHA}VBPuJHI7uixaa6LQGWx4s+5GKNE=',
         };
 
-        passJs.validate = jest.fn((pass, hash, callback) => {
-            callback(null, true);
-        });
-
         await new Promise<void>((resolve) => {
-            basic.authenticate('testuser', 'password', (err, result) => {
+            basic.authenticate('testuser', 'myPassword', (err, result) => {
                 expect(result).toEqual({ username: 'testuser' });
                 resolve();
             });
@@ -77,15 +72,10 @@ describe('Basic Authentication', () => {
     });
 
     test('should reject invalid password', async () => {
-        const { default: passJs } = await import('pass');
         basic.configuration = {
             user: 'testuser',
-            hash: '$2b$10$test.hash.value',
+            hash: '{SHA}VBPuJHI7uixaa6LQGWx4s+5GKNE=',
         };
-
-        passJs.validate = jest.fn((pass, hash, callback) => {
-            callback(null, false);
-        });
 
         await new Promise<void>((resolve) => {
             basic.authenticate('testuser', 'wrongpassword', (err, result) => {
