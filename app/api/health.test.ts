@@ -8,7 +8,6 @@ jest.mock('express', () => ({
 }));
 
 jest.mock('nocache', () => jest.fn());
-jest.mock('express-healthcheck', () => jest.fn(() => 'healthcheck-middleware'));
 
 import * as healthRouter from './health';
 
@@ -17,18 +16,27 @@ describe('Health Router', () => {
         jest.clearAllMocks();
     });
 
-    test('should initialize router with nocache and healthcheck', async () => {
+    test('should initialize router with nocache and healthcheck handler', async () => {
         const router = healthRouter.init();
 
         expect(router).toBeDefined();
         expect(router.use).toHaveBeenCalled();
-        expect(router.get).toHaveBeenCalledWith('/', 'healthcheck-middleware');
+        expect(router.get).toHaveBeenCalledWith('/', expect.any(Function));
     });
 
-    test('should use express-healthcheck middleware', async () => {
-        const expressHealthcheck = await import('express-healthcheck');
-        healthRouter.init();
+    test('should return uptime', async () => {
+        const router = healthRouter.init();
+        const handler = router.get.mock.calls[0][1];
+        const res = {
+            status: jest.fn().mockReturnThis(),
+            json: jest.fn(),
+        };
+        const uptime = jest.spyOn(process, 'uptime').mockReturnValue(123);
 
-        expect(expressHealthcheck).toHaveBeenCalled();
+        handler({}, res);
+
+        expect(res.status).toHaveBeenCalledWith(200);
+        expect(res.json).toHaveBeenCalledWith({ uptime: 123 });
+        uptime.mockRestore();
     });
 });
