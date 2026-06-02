@@ -33,6 +33,11 @@ export const wudTagTransform = 'wud.tag.transform';
 export const wudWatchDigest = 'wud.watch.digest';
 
 /**
+ * Minimum age required before a candidate update can be pulled.
+ */
+export const wudWatchMinAge = 'wud.watch.minage';
+
+/**
  * Optional templated string pointing to a browsable link.
  */
 export const wudLinkTemplate = 'wud.link.template';

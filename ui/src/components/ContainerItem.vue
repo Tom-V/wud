@@ -1,15 +1,8 @@
 <template>
   <div>
-    <div
-      v-if="
-        this.groupingLabel &&
-        this.previousContainer?.labels?.[this.groupingLabel] !==
-          this.container.labels?.[this.groupingLabel]
-      "
-    >
+    <div v-if="showGroupingHeader">
       <div class="text-h6">
-        {{ this.groupingLabel }} =
-        {{ this.container.labels?.[this.groupingLabel] ?? "(empty)" }}
+        {{ this.groupingLabel }} = {{ groupingValue }}
       </div>
       <v-divider class="pb-3"></v-divider>
     </div>
@@ -19,10 +12,7 @@
         style="cursor: pointer"
         class="pa-3 d-flex align-center bg-surface"
       >
-        <div
-          class="text-body-3 d-flex align-center"
-          style="gap: 5px"
-        >
+        <div class="text-body-3 d-flex align-center" style="gap: 5px">
           <span v-if="smAndUp">
             <v-chip label color="info" variant="outlined" disabled>
               <v-icon left>mdi-update</v-icon>
@@ -32,8 +22,8 @@
           </span>
           <span v-if="mdAndUp">
             <v-chip label color="info" variant="outlined" disabled>
-              <IconRenderer 
-                v-if="smAndUp" 
+              <IconRenderer
+                v-if="smAndUp"
                 :icon="registryIcon"
                 :size="24"
                 :margin-right="8"
@@ -43,8 +33,8 @@
             /
           </span>
           <v-chip label color="info" variant="outlined" disabled>
-            <IconRenderer 
-              v-if="smAndUp" 
+            <IconRenderer
+              v-if="smAndUp"
               :icon="container.displayIcon"
               :size="24"
               :margin-right="8"
@@ -60,11 +50,17 @@
             </v-chip>
           </span>
         </div>
-        
+
         <v-spacer />
-        
+
         <div class="d-flex align-center" style="gap: 8px">
-          <span v-if="smAndUp && container.updateAvailable" class="d-flex align-center" style="gap: 4px">
+          <span
+            v-if="
+              smAndUp && (container.updateAvailable || container.updatePending)
+            "
+            class="d-flex align-center"
+            style="gap: 4px"
+          >
             <v-icon>mdi-arrow-right</v-icon>
             <v-tooltip bottom>
               <template v-slot:activator="{ props }">
@@ -78,19 +74,23 @@
                     $event.stopImmediatePropagation();
                   "
                 >
+                  <v-icon v-if="container.updatePending" start size="small"
+                    >mdi-clock-outline</v-icon
+                  >
                   {{ newVersion }}
                   <v-icon end size="small">mdi-clipboard-outline</v-icon>
                 </v-chip>
               </template>
-              <span class="text-caption">Copy to clipboard</span>
+              <span class="text-caption">{{
+                container.updatePending
+                  ? `Pending until ${$filters.dateTime(container.updatePendingUntil)}`
+                  : "Copy to clipboard"
+              }}</span>
             </v-tooltip>
           </span>
 
-          <span
-            v-if="smAndUp && oldestFirst"
-            class="text-caption"
-          >
-            {{ this.$filters.date(container.image.created) }}
+          <span v-if="smAndUp && oldestFirst" class="text-caption">
+            {{ formattedCreatedDate }}
           </span>
 
           <v-icon>{{
@@ -100,12 +100,7 @@
       </v-card-title>
       <transition name="expand-transition">
         <div v-show="showDetail">
-          <v-tabs
-            :stacked="smAndUp"
-            fixed-tabs
-            v-model="tab"
-            ref="tabs"
-          >
+          <v-tabs :stacked="smAndUp" fixed-tabs v-model="tab" ref="tabs">
             <v-tab v-if="container.result">
               <span v-if="smAndUp">Update</span>
               <v-icon>mdi-package-down</v-icon>
@@ -120,7 +115,7 @@
             </v-tab>
             <v-tab>
               <span v-if="smAndUp">Container</span>
-              <IconRenderer 
+              <IconRenderer
                 :icon="container.displayIcon"
                 :size="24"
                 :margin-right="8"
@@ -139,6 +134,10 @@
                 :semver="container.image.tag.semver"
                 :update-kind="container.updateKind"
                 :update-available="container.updateAvailable"
+                :update-pending="container.updatePending"
+                :update-pending-reason="container.updatePendingReason"
+                :update-pending-until="container.updatePendingUntil"
+                :min-age="container.minAge"
               />
             </v-window-item>
             <v-window-item>
@@ -197,7 +196,11 @@
                       </v-row>
                       <v-row>
                         <v-col class="text-center">
-                          <v-btn variant="outlined" @click="dialogDelete = false" small>
+                          <v-btn
+                            variant="outlined"
+                            @click="dialogDelete = false"
+                            small
+                          >
                             Cancel
                           </v-btn>
                           &nbsp;

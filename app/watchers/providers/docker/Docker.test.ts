@@ -101,6 +101,7 @@ describe('Docker Watcher', () => {
         if (docker && docker.deregisterComponent) {
             docker.deregisterComponent();
         }
+        jest.restoreAllMocks();
     });
 
     describe('Configuration', () => {
@@ -138,6 +139,22 @@ describe('Docker Watcher', () => {
                 includeprerelease: true,
             };
             expect(() => docker.validateConfiguration(config)).not.toThrow();
+        });
+
+        test('should validate configuration with minage option', async () => {
+            const config = {
+                socket: '/var/run/docker.sock',
+                minage: '12h',
+            };
+            expect(docker.validateConfiguration(config).minage).toBe('12h');
+        });
+
+        test('should reject invalid minage configuration', async () => {
+            const config = {
+                socket: '/var/run/docker.sock',
+                minage: '12',
+            };
+            expect(() => docker.validateConfiguration(config)).toThrow();
         });
     });
 
@@ -1083,6 +1100,184 @@ describe('Docker Watcher', () => {
             expect(result).toEqual({ tag: '1.2.4-rc1' });
         });
 
+        test('should mark tag candidate pending when remote image is too recent', async () => {
+            jest.spyOn(Date, 'now').mockReturnValue(
+                new Date('2026-06-01T00:00:00.000Z').getTime(),
+            );
+            const container = {
+                minAge: '12h',
+                image: {
+                    registry: { name: 'hub' },
+                    name: 'organization/image',
+                    tag: { value: '1.0.0', semver: true },
+                    digest: { watch: false },
+                },
+            };
+            const mockRegistry = {
+                getTags: jest.fn().mockResolvedValue(['1.1.0', '1.0.0']),
+                getImageManifestDigest: jest.fn().mockResolvedValue({
+                    digest: 'sha256:new',
+                    created: '2026-05-31T18:00:00.000Z',
+                    version: 2,
+                }),
+                isDigestToWatch: jest.fn(() => false),
+            };
+            registry.getState.mockReturnValue({
+                registry: { hub: mockRegistry },
+            });
+            mockTag.isGreater.mockImplementation((t1) => t1 === '1.1.0');
+
+            const result = await docker.findNewVersion(container, {
+                error: jest.fn(),
+                warn: jest.fn(),
+                info: jest.fn(),
+            });
+
+            expect(result).toEqual({
+                tag: '1.1.0',
+                created: '2026-05-31T18:00:00.000Z',
+            });
+            expect(container.updatePending).toBe(true);
+            expect(container.updatePendingReason).toBe('minimum-age');
+            expect(container.updatePendingUntil).toBe(
+                '2026-06-01T06:00:00.000Z',
+            );
+        });
+
+        test('should allow tag candidate when remote image is old enough', async () => {
+            jest.spyOn(Date, 'now').mockReturnValue(
+                new Date('2026-06-01T00:00:00.000Z').getTime(),
+            );
+            const container = {
+                minAge: '12h',
+                image: {
+                    registry: { name: 'hub' },
+                    name: 'organization/image',
+                    tag: { value: '1.0.0', semver: true },
+                    digest: { watch: false },
+                },
+            };
+            const mockRegistry = {
+                getTags: jest.fn().mockResolvedValue(['1.1.0', '1.0.0']),
+                getImageManifestDigest: jest.fn().mockResolvedValue({
+                    digest: 'sha256:new',
+                    created: '2026-05-30T00:00:00.000Z',
+                    version: 2,
+                }),
+                isDigestToWatch: jest.fn(() => false),
+            };
+            registry.getState.mockReturnValue({
+                registry: { hub: mockRegistry },
+            });
+            mockTag.isGreater.mockImplementation((t1) => t1 === '1.1.0');
+
+            const result = await docker.findNewVersion(container, {
+                error: jest.fn(),
+                warn: jest.fn(),
+                info: jest.fn(),
+            });
+
+            expect(result).toEqual({
+                tag: '1.1.0',
+                created: '2026-05-30T00:00:00.000Z',
+            });
+            expect(container.updatePending).toBe(false);
+        });
+
+        test('should fall back to newest old-enough tag when highest tag is too recent', async () => {
+            jest.spyOn(Date, 'now').mockReturnValue(
+                new Date('2026-06-01T00:00:00.000Z').getTime(),
+            );
+            const container = {
+                minAge: '12h',
+                image: {
+                    registry: { name: 'hub' },
+                    name: 'organization/image',
+                    tag: { value: '1.0.0', semver: true },
+                    digest: { watch: false },
+                },
+            };
+            const mockRegistry = {
+                getTags: jest
+                    .fn()
+                    .mockResolvedValue(['1.0.2', '1.0.1', '1.0.0']),
+                getImageManifestDigest: jest.fn((image) => {
+                    if (image.tag.value === '1.0.2') {
+                        return Promise.resolve({
+                            digest: 'sha256:newest',
+                            created: '2026-05-31T18:00:00.000Z',
+                            version: 2,
+                        });
+                    }
+                    return Promise.resolve({
+                        digest: 'sha256:older',
+                        created: '2026-05-30T00:00:00.000Z',
+                        version: 2,
+                    });
+                }),
+                isDigestToWatch: jest.fn(() => false),
+            };
+            registry.getState.mockReturnValue({
+                registry: { hub: mockRegistry },
+            });
+            mockTag.isGreater.mockImplementation((t1, t2) => {
+                const order = ['1.0.0', '1.0.1', '1.0.2'];
+                return order.indexOf(t1) > order.indexOf(t2);
+            });
+
+            const result = await docker.findNewVersion(container, {
+                error: jest.fn(),
+                warn: jest.fn(),
+                info: jest.fn(),
+            });
+
+            expect(result).toEqual({
+                tag: '1.0.1',
+                created: '2026-05-30T00:00:00.000Z',
+            });
+            expect(container.updatePending).toBe(false);
+            expect(mockRegistry.getImageManifestDigest).toHaveBeenCalledTimes(
+                2,
+            );
+        });
+
+        test('should allow update and warn when remote creation date is missing', async () => {
+            const warn = jest.fn();
+            const container = {
+                minAge: '12h',
+                image: {
+                    registry: { name: 'hub' },
+                    name: 'organization/image',
+                    tag: { value: '1.0.0', semver: true },
+                    digest: { watch: false },
+                },
+            };
+            const mockRegistry = {
+                getTags: jest.fn().mockResolvedValue(['1.1.0', '1.0.0']),
+                getImageManifestDigest: jest.fn().mockResolvedValue({
+                    digest: 'sha256:new',
+                    version: 2,
+                }),
+                isDigestToWatch: jest.fn(() => false),
+            };
+            registry.getState.mockReturnValue({
+                registry: { hub: mockRegistry },
+            });
+            mockTag.isGreater.mockImplementation((t1) => t1 === '1.1.0');
+
+            const result = await docker.findNewVersion(container, {
+                error: jest.fn(),
+                warn,
+                info: jest.fn(),
+            });
+
+            expect(result).toEqual({ tag: '1.1.0', created: undefined });
+            expect(container.updatePending).toBe(false);
+            expect(warn).toHaveBeenCalledWith(
+                expect.stringContaining('minimum age cannot be applied'),
+            );
+        });
+
         test('should keep current tag when only prerelease candidates exist and prereleases are disabled', async () => {
             const container = {
                 includePrerelease: false,
@@ -1285,6 +1480,132 @@ describe('Docker Watcher', () => {
             expect(result.includePrerelease).toBe(false);
         });
 
+        test('should use watcher default minAge in normalized containers', async () => {
+            await docker.register('watcher', 'docker', 'test', {
+                minage: '12h',
+            });
+            const container = {
+                Id: '123',
+                Image: 'nginx:1.0.0',
+                Names: ['/test-container'],
+                State: 'running',
+                Labels: {},
+            };
+            const imageDetails = {
+                Id: 'image123',
+                Architecture: 'amd64',
+                Os: 'linux',
+                Created: '2023-01-01',
+            };
+            mockImage.inspect.mockResolvedValue(imageDetails);
+            const mockRegistry = {
+                normalizeImage: jest.fn((img) => img),
+                getId: () => 'hub',
+                match: () => true,
+                isDigestToWatch: jest.fn(() => false),
+            };
+            registry.getState.mockReturnValue({
+                registry: { hub: mockRegistry },
+            });
+            const containerModule = await import('../../../model/container');
+            const validateContainer = containerModule.validate;
+            validateContainer.mockImplementation((value) => value);
+
+            const result = await docker.addImageDetailsToContainer(container);
+
+            expect(result.minAge).toBe('12h');
+        });
+
+        test('should let label override watcher minAge', async () => {
+            await docker.register('watcher', 'docker', 'test', {
+                minage: '12h',
+            });
+            const container = {
+                Id: '123',
+                Image: 'nginx:1.0.0',
+                Names: ['/test-container'],
+                State: 'running',
+                Labels: {
+                    'wud.watch.minage': '2d',
+                },
+            };
+            const imageDetails = {
+                Id: 'image123',
+                Architecture: 'amd64',
+                Os: 'linux',
+                Created: '2023-01-01',
+            };
+            mockImage.inspect.mockResolvedValue(imageDetails);
+            const mockRegistry = {
+                normalizeImage: jest.fn((img) => img),
+                getId: () => 'hub',
+                match: () => true,
+                isDigestToWatch: jest.fn(() => false),
+            };
+            registry.getState.mockReturnValue({
+                registry: { hub: mockRegistry },
+            });
+            const containerModule = await import('../../../model/container');
+            const validateContainer = containerModule.validate;
+            validateContainer.mockImplementation((value) => value);
+
+            const result = await docker.addImageDetailsToContainer(
+                container,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                container.Labels['wud.watch.minage'],
+            );
+
+            expect(result.minAge).toBe('2d');
+        });
+
+        test('should let label disable watcher minAge', async () => {
+            await docker.register('watcher', 'docker', 'test', {
+                minage: '12h',
+            });
+            const container = {
+                Id: '123',
+                Image: 'nginx:1.0.0',
+                Names: ['/test-container'],
+                State: 'running',
+                Labels: {
+                    'wud.watch.minage': '0s',
+                },
+            };
+            const imageDetails = {
+                Id: 'image123',
+                Architecture: 'amd64',
+                Os: 'linux',
+                Created: '2023-01-01',
+            };
+            mockImage.inspect.mockResolvedValue(imageDetails);
+            const mockRegistry = {
+                normalizeImage: jest.fn((img) => img),
+                getId: () => 'hub',
+                match: () => true,
+                isDigestToWatch: jest.fn(() => false),
+            };
+            registry.getState.mockReturnValue({
+                registry: { hub: mockRegistry },
+            });
+            const containerModule = await import('../../../model/container');
+            const validateContainer = containerModule.validate;
+            validateContainer.mockImplementation((value) => value);
+
+            const result = await docker.addImageDetailsToContainer(
+                container,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                container.Labels['wud.watch.minage'],
+            );
+
+            expect(result.minAge).toBe('0s');
+        });
+
         test('should let label opt in to prereleases over watcher default', async () => {
             await docker.register('watcher', 'docker', 'test', {
                 includeprerelease: false,
@@ -1461,6 +1782,90 @@ describe('Docker Watcher', () => {
 
             expect(mockImage.inspect).toHaveBeenCalled();
             expect(result.includePrerelease).toBe(true);
+        });
+
+        test('should invalidate cached container when watcher default minAge changes', async () => {
+            await docker.register('watcher', 'docker', 'test', {
+                minage: '12h',
+            });
+            storeContainer.getContainer.mockReturnValue({
+                id: '123',
+                error: undefined,
+                labels: {},
+                includePrerelease: false,
+                minAge: '0s',
+            });
+            const container = {
+                Id: '123',
+                Image: 'nginx:1.0.0',
+                Names: ['/test-container'],
+                State: 'running',
+                Labels: {},
+            };
+            const imageDetails = {
+                Id: 'image123',
+                Architecture: 'amd64',
+                Os: 'linux',
+                Created: '2023-01-01',
+            };
+            mockImage.inspect.mockResolvedValue(imageDetails);
+            const mockRegistry = {
+                normalizeImage: jest.fn((img) => img),
+                getId: () => 'hub',
+                match: () => true,
+                isDigestToWatch: jest.fn(() => false),
+            };
+            registry.getState.mockReturnValue({
+                registry: { hub: mockRegistry },
+            });
+            const containerModule = await import('../../../model/container');
+            const validateContainer = containerModule.validate;
+            validateContainer.mockImplementation((value) => value);
+
+            const result = await docker.addImageDetailsToContainer(container);
+
+            expect(mockImage.inspect).toHaveBeenCalled();
+            expect(result.minAge).toBe('12h');
+        });
+
+        test('should reject invalid minAge label for a container', async () => {
+            await docker.register('watcher', 'docker', 'test', {});
+            const container = {
+                Id: '123',
+                Image: 'nginx:1.0.0',
+                Names: ['/test-container'],
+                State: 'running',
+                Labels: {
+                    'wud.watch.minage': '12',
+                },
+            };
+            const imageDetails = {
+                Id: 'image123',
+                Architecture: 'amd64',
+                Os: 'linux',
+                Created: '2023-01-01',
+            };
+            mockImage.inspect.mockResolvedValue(imageDetails);
+            const mockRegistry = {
+                normalizeImage: jest.fn((img) => img),
+                getId: () => 'hub',
+                match: () => true,
+                isDigestToWatch: jest.fn(() => false),
+            };
+            registry.getState.mockReturnValue({
+                registry: { hub: mockRegistry },
+            });
+
+            await expect(
+                docker.addImageDetailsToContainer(
+                    container,
+                    undefined,
+                    undefined,
+                    undefined,
+                    undefined,
+                    container.Labels['wud.watch.minage'],
+                ),
+            ).rejects.toThrow('Invalid duration');
         });
 
         test('should reuse cached container when wud labels and defaults are unchanged', async () => {

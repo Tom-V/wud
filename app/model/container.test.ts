@@ -72,6 +72,7 @@ test('model should be validated when compliant', async () => {
             remoteValue: '2.0.0',
             semverDiff: 'major',
         },
+        updatePending: false,
         result: {
             link: 'https://release-2.0.0.acme.com',
             tag: '2.0.0',
@@ -252,6 +253,86 @@ test('model should flag updateAvailable when created is different', async () => 
     expect(containerValidated.resultChanged(containerDifferent)).toBeTruthy();
 });
 
+test('model should not flag updateAvailable when update is pending', async () => {
+    const containerValidated = container.validate({
+        id: 'container-123456789',
+        name: 'test',
+        watcher: 'test',
+        minAge: '12h',
+        image: {
+            id: 'image-123456789',
+            registry: {
+                name: 'hub',
+                url: 'https://hub',
+            },
+            name: 'organization/image',
+            tag: {
+                value: '1.0.0',
+                semver: true,
+            },
+            digest: {
+                watch: false,
+            },
+            architecture: 'arch',
+            os: 'os',
+        },
+        result: {
+            tag: '2.0.0',
+        },
+        updatePending: true,
+        updatePendingReason: 'minimum-age',
+        updatePendingUntil: '2026-06-01T12:00:00.000Z',
+    });
+
+    expect(containerValidated.updateAvailable).toBeFalsy();
+    expect(containerValidated.updatePending).toBeTruthy();
+    expect(containerValidated.updateKind).toEqual({
+        kind: 'tag',
+        localValue: '1.0.0',
+        remoteValue: '2.0.0',
+        semverDiff: 'major',
+    });
+});
+
+test('model resultChanged should detect pending state changes', async () => {
+    const containerPending = container.validate({
+        id: 'container-123456789',
+        name: 'test',
+        watcher: 'test',
+        image: {
+            id: 'image-123456789',
+            registry: {
+                name: 'hub',
+                url: 'https://hub',
+            },
+            name: 'organization/image',
+            tag: {
+                value: '1.0.0',
+                semver: true,
+            },
+            digest: {
+                watch: false,
+            },
+            architecture: 'arch',
+            os: 'os',
+        },
+        result: {
+            tag: '2.0.0',
+        },
+        updatePending: true,
+        updatePendingReason: 'minimum-age',
+        updatePendingUntil: '2026-06-01T12:00:00.000Z',
+    });
+    const containerAvailable = container.validate({
+        ...containerPending,
+        updatePending: false,
+        updatePendingReason: undefined,
+        updatePendingUntil: undefined,
+    });
+
+    expect(containerPending.resultChanged(containerAvailable)).toBeTruthy();
+});
+
 test('model should support transforms for links', async () => {
     const containerValidated = container.validate({
         id: 'container-123456789',
@@ -324,6 +405,7 @@ test('flatten should be flatten the nested properties with underscores when call
         status: 'unknown',
         image_architecture: 'arch',
         image_created: '2021-06-12T05:33:38.440Z',
+        image_digest_repo: undefined,
         image_digest_watch: false,
         image_id: 'image-123456789',
         image_name: 'organization/image',
@@ -345,6 +427,7 @@ test('flatten should be flatten the nested properties with underscores when call
         update_kind_local_value: '1.0.0',
         update_kind_remote_value: '2.0.0',
         update_kind_semver_diff: 'major',
+        update_pending: false,
         watcher: 'test',
     });
 });

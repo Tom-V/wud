@@ -36,6 +36,10 @@ export interface RegistryManifestResponse {
     }[];
 }
 
+export interface RegistryConfigResponse {
+    created?: string;
+}
+
 /**
  * Docker Registry Abstract class.
  */
@@ -249,12 +253,20 @@ export class Registry extends Component {
                         },
                         resolveWithFullResponse: true,
                     });
-                const manifestFound = {
+                const created = await this.getImageCreatedFromManifest(
+                    image,
+                    manifestDigestFound,
+                    manifestMediaType,
+                );
+                const manifestFound: RegistryManifest = {
                     digest: responseManifest.headers['docker-content-digest'],
                     version: 2,
                 };
+                if (created) {
+                    manifestFound.created = created;
+                }
                 log.debug(
-                    `Manifest found with [digest=${manifestFound.digest}, version=${manifestFound.version}]`,
+                    `Manifest found with [digest=${manifestFound.digest}, created=${manifestFound.created}, version=${manifestFound.version}]`,
                 );
                 return manifestFound;
             }
@@ -266,18 +278,77 @@ export class Registry extends Component {
                     manifestMediaType ===
                         'application/vnd.oci.image.config.v1+json')
             ) {
-                const manifestFound = {
+                const created = await this.getImageCreatedFromConfig(
+                    image,
+                    manifestDigestFound,
+                    manifestMediaType,
+                );
+                const manifestFound: RegistryManifest = {
                     digest: manifestDigestFound,
                     version: 1,
                 };
+                if (created) {
+                    manifestFound.created = created;
+                }
                 log.debug(
-                    `Manifest found with [digest=${manifestFound.digest}, version=${manifestFound.version}]`,
+                    `Manifest found with [digest=${manifestFound.digest}, created=${manifestFound.created}, version=${manifestFound.version}]`,
                 );
                 return manifestFound;
             }
         }
         // Empty result...
         throw new Error('Unexpected error; no manifest found');
+    }
+
+    private async getImageCreatedFromManifest(
+        image: ContainerImage,
+        manifestDigest: string,
+        manifestMediaType: string,
+    ) {
+        try {
+            const manifest = await this.callRegistry<RegistryManifestResponse>({
+                image,
+                url: `${image.registry.url}/${image.name}/manifests/${manifestDigest}`,
+                headers: {
+                    Accept: manifestMediaType,
+                },
+            });
+            if (!manifest.config?.digest) {
+                return undefined;
+            }
+            return this.getImageCreatedFromConfig(
+                image,
+                manifest.config.digest,
+                manifest.config.mediaType,
+            );
+        } catch (e: any) {
+            log.debug(
+                `Unable to read image manifest config for created date (${e.message})`,
+            );
+            return undefined;
+        }
+    }
+
+    private async getImageCreatedFromConfig(
+        image: ContainerImage,
+        configDigest: string,
+        configMediaType?: string,
+    ) {
+        try {
+            const config = await this.callRegistry<RegistryConfigResponse>({
+                image,
+                url: `${image.registry.url}/${image.name}/blobs/${configDigest}`,
+                headers: {
+                    Accept: configMediaType || 'application/json',
+                },
+            });
+            return config.created;
+        } catch (e: any) {
+            log.debug(
+                `Unable to read image config for created date (${e.message})`,
+            );
+            return undefined;
+        }
     }
 
     async callRegistry<T = any>(options: {

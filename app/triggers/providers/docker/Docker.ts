@@ -33,6 +33,18 @@ class Docker extends Trigger {
         ] as DockerWatcher;
     }
 
+    assertContainerNotPending(container: Container, logContainer: Logger) {
+        if (!container.updatePending) {
+            return;
+        }
+        const pendingUntil = container.updatePendingUntil
+            ? ` until ${container.updatePendingUntil}`
+            : '';
+        const message = `Update for container ${container.name} is pending${pendingUntil} and cannot be pulled yet`;
+        logContainer.warn(message);
+        throw new Error(message);
+    }
+
     /**
      * Get current container.
      */
@@ -565,6 +577,7 @@ class Docker extends Trigger {
     async trigger(container: Container) {
         // Child logger for the container to process
         const logContainer = this.log.child({ component: fullName(container) });
+        this.assertContainerNotPending(container, logContainer);
 
         // Get watcher
         const watcher = this.getWatcher(container);

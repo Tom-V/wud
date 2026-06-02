@@ -112,6 +112,147 @@ test('getImageManifestDigest should return digest for application/vnd.docker.dis
     });
 });
 
+test('getImageManifestDigest should return created date from selected v2 config blob', async () => {
+    const registryMocked = new Registry();
+    registryMocked.log = log;
+    registryMocked.callRegistry = (options) => {
+        if (
+            options.headers.Accept ===
+            'application/vnd.docker.distribution.manifest.list.v2+json, application/vnd.oci.image.index.v1+json, application/vnd.docker.distribution.manifest.v2+json, application/vnd.oci.image.manifest.v1+json'
+        ) {
+            return {
+                schemaVersion: 2,
+                mediaType:
+                    'application/vnd.docker.distribution.manifest.list.v2+json',
+                manifests: [
+                    {
+                        platform: {
+                            architecture: 'amd64',
+                            os: 'linux',
+                        },
+                        digest: 'manifest_digest',
+                        mediaType:
+                            'application/vnd.docker.distribution.manifest.v2+json',
+                    },
+                ],
+            };
+        }
+        if (
+            options.method !== 'head' &&
+            options.url === 'url/image/manifests/manifest_digest'
+        ) {
+            return {
+                schemaVersion: 2,
+                mediaType:
+                    'application/vnd.docker.distribution.manifest.v2+json',
+                config: {
+                    digest: 'config_digest',
+                    mediaType: 'application/vnd.docker.container.image.v1+json',
+                },
+            };
+        }
+        if (options.url === 'url/image/blobs/config_digest') {
+            return {
+                created: '2026-06-01T00:00:00.000Z',
+            };
+        }
+        if (options.method === 'head') {
+            return {
+                headers: {
+                    'docker-content-digest': '123456789',
+                },
+            };
+        }
+        throw new Error('Boom!');
+    };
+    expect(
+        registryMocked.getImageManifestDigest({
+            name: 'image',
+            architecture: 'amd64',
+            os: 'linux',
+            tag: {
+                value: 'tag',
+            },
+            registry: {
+                url: 'url',
+            },
+        }),
+    ).resolves.toStrictEqual({
+        version: 2,
+        digest: '123456789',
+        created: '2026-06-01T00:00:00.000Z',
+    });
+});
+
+test('getImageManifestDigest should return created date from selected OCI config blob', async () => {
+    const registryMocked = new Registry();
+    registryMocked.log = log;
+    registryMocked.callRegistry = (options) => {
+        if (
+            options.headers.Accept ===
+            'application/vnd.docker.distribution.manifest.list.v2+json, application/vnd.oci.image.index.v1+json, application/vnd.docker.distribution.manifest.v2+json, application/vnd.oci.image.manifest.v1+json'
+        ) {
+            return {
+                schemaVersion: 2,
+                mediaType: 'application/vnd.oci.image.index.v1+json',
+                manifests: [
+                    {
+                        platform: {
+                            architecture: 'amd64',
+                            os: 'linux',
+                        },
+                        digest: 'manifest_digest',
+                        mediaType: 'application/vnd.oci.image.manifest.v1+json',
+                    },
+                ],
+            };
+        }
+        if (
+            options.method !== 'head' &&
+            options.url === 'url/image/manifests/manifest_digest'
+        ) {
+            return {
+                schemaVersion: 2,
+                mediaType: 'application/vnd.oci.image.manifest.v1+json',
+                config: {
+                    digest: 'config_digest',
+                    mediaType: 'application/vnd.oci.image.config.v1+json',
+                },
+            };
+        }
+        if (options.url === 'url/image/blobs/config_digest') {
+            return {
+                created: '2026-06-01T00:00:00.000Z',
+            };
+        }
+        if (options.method === 'head') {
+            return {
+                headers: {
+                    'docker-content-digest': '123456789',
+                },
+            };
+        }
+        throw new Error('Boom!');
+    };
+    expect(
+        registryMocked.getImageManifestDigest({
+            name: 'image',
+            architecture: 'amd64',
+            os: 'linux',
+            tag: {
+                value: 'tag',
+            },
+            registry: {
+                url: 'url',
+            },
+        }),
+    ).resolves.toStrictEqual({
+        version: 2,
+        digest: '123456789',
+        created: '2026-06-01T00:00:00.000Z',
+    });
+});
+
 test('getImageManifestDigest should return digest for application/vnd.docker.distribution.manifest.list.v2+json then application/vnd.docker.container.image.v1+json', async () => {
     const registryMocked = new Registry();
     registryMocked.log = log;
@@ -188,8 +329,29 @@ test('getImageManifestDigest should return the manifest digest (not the config d
             };
         }
         if (
+            options.method !== 'head' &&
             options.headers.Accept ===
-            'application/vnd.docker.distribution.manifest.v2+json'
+                'application/vnd.docker.distribution.manifest.v2+json'
+        ) {
+            return {
+                schemaVersion: 2,
+                mediaType:
+                    'application/vnd.docker.distribution.manifest.v2+json',
+                config: {
+                    digest: 'config_digest',
+                    mediaType: 'application/vnd.docker.container.image.v1+json',
+                },
+            };
+        }
+        if (options.url === 'url/image/blobs/config_digest') {
+            return {
+                created: '2026-06-01T00:00:00.000Z',
+            };
+        }
+        if (
+            options.method === 'head' &&
+            options.headers.Accept ===
+                'application/vnd.docker.distribution.manifest.v2+json'
         ) {
             return {
                 headers: {
@@ -214,13 +376,19 @@ test('getImageManifestDigest should return the manifest digest (not the config d
     ).resolves.toStrictEqual({
         version: 2,
         digest: 'manifest_digest',
+        created: '2026-06-01T00:00:00.000Z',
     });
-    // The confirmation request must be made against the reference we already
+    const manifestUrls = urlsCalled.filter((url) =>
+        url.startsWith('url/image/manifests/'),
+    );
+    // The confirmation requests must be made against the reference we already
     // fetched the manifest by (the tag here), never against the config digest.
-    expect(urlsCalled).toStrictEqual([
-        'url/image/manifests/tag',
-        'url/image/manifests/tag',
-    ]);
+    expect(manifestUrls.length).toBeGreaterThanOrEqual(2);
+    expect(manifestUrls.every((url) => url === 'url/image/manifests/tag')).toBe(
+        true,
+    );
+    expect(urlsCalled).toContain('url/image/blobs/config_digest');
+    expect(urlsCalled).not.toContain('url/image/manifests/config_digest');
 });
 
 test('getImageManifestDigest should resolve a manifest fetched directly by its own digest to that same digest', async () => {
@@ -243,8 +411,28 @@ test('getImageManifestDigest should resolve a manifest fetched directly by its o
             };
         }
         if (
+            options.method !== 'head' &&
             options.headers.Accept ===
-            'application/vnd.oci.image.manifest.v1+json'
+                'application/vnd.oci.image.manifest.v1+json'
+        ) {
+            return {
+                schemaVersion: 2,
+                mediaType: 'application/vnd.oci.image.manifest.v1+json',
+                config: {
+                    digest: 'config_digest',
+                    mediaType: 'application/vnd.oci.image.config.v1+json',
+                },
+            };
+        }
+        if (options.url === 'url/image/blobs/config_digest') {
+            return {
+                created: '2026-06-01T00:00:00.000Z',
+            };
+        }
+        if (
+            options.method === 'head' &&
+            options.headers.Accept ===
+                'application/vnd.oci.image.manifest.v1+json'
         ) {
             return {
                 headers: {
@@ -270,11 +458,20 @@ test('getImageManifestDigest should resolve a manifest fetched directly by its o
     ).resolves.toStrictEqual({
         version: 2,
         digest: 'sha256:platformManifestDigest',
+        created: '2026-06-01T00:00:00.000Z',
     });
-    expect(urlsCalled).toStrictEqual([
-        'url/image/manifests/sha256:platformManifestDigest',
-        'url/image/manifests/sha256:platformManifestDigest',
-    ]);
+    const manifestUrls = urlsCalled.filter((url) =>
+        url.startsWith('url/image/manifests/'),
+    );
+    expect(manifestUrls.length).toBeGreaterThanOrEqual(2);
+    expect(
+        manifestUrls.every(
+            (url) =>
+                url === 'url/image/manifests/sha256:platformManifestDigest',
+        ),
+    ).toBe(true);
+    expect(urlsCalled).toContain('url/image/blobs/config_digest');
+    expect(urlsCalled).not.toContain('url/image/manifests/config_digest');
 });
 
 test('getImageManifestDigest should return digest for application/vnd.docker.container.image.v1+json', async () => {

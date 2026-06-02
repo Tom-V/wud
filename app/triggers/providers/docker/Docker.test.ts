@@ -143,6 +143,27 @@ test('getWatcher should return watcher responsible for a container', async () =>
     ).toEqual('docker.test');
 });
 
+test('trigger should refuse pending updates before pulling image', async () => {
+    await expect(
+        docker.trigger({
+            id: '123456789',
+            name: 'container-name',
+            watcher: 'test',
+            updatePending: true,
+            updatePendingUntil: '2026-06-01T12:00:00.000Z',
+            image: {
+                registry: { name: 'hub', url: 'test' },
+                name: 'test',
+                tag: { value: '1.0.0' },
+            },
+            updateKind: {
+                kind: 'tag',
+                remoteValue: '1.2.3',
+            },
+        }),
+    ).rejects.toThrow('pending until 2026-06-01T12:00:00.000Z');
+});
+
 test('getCurrentContainer should return container from dockerApi', async () => {
     await expect(
         docker.getCurrentContainer(

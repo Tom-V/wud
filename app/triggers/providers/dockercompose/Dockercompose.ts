@@ -177,6 +177,9 @@ class Dockercompose extends Docker {
         // Track which services have already been mapped to avoid duplicates
         // (multiple containers can share the same image/service)
         const processedServices = new Set();
+        containersFiltered.forEach((container) =>
+            this.assertContainerNotPending(container, this.log),
+        );
 
         // [{ current: '1.0.0', update: '2.0.0' }, {...}]
         const currentVersionToUpdateVersionArray = containersFiltered

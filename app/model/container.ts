@@ -53,6 +53,7 @@ export interface Container {
     transformTags?: string;
     linkTemplate?: string;
     link?: string;
+    minAge?: string;
     triggerInclude?: string;
     triggerExclude?: string;
     image: ContainerImage;
@@ -61,6 +62,9 @@ export interface Container {
         message: string;
     };
     updateAvailable: boolean;
+    updatePending: boolean;
+    updatePendingReason?: 'minimum-age';
+    updatePendingUntil?: string;
     updateKind: ContainerUpdateKind;
     labels?: Record<string, string>;
     resultChanged?: (otherContainer: Container | undefined) => boolean;
@@ -80,6 +84,7 @@ const schema = joi.object({
     transformTags: joi.string(),
     linkTemplate: joi.string(),
     link: joi.string(),
+    minAge: joi.string(),
     triggerInclude: joi.string(),
     triggerExclude: joi.string(),
     image: joi
@@ -121,6 +126,9 @@ const schema = joi.object({
         message: joi.string().min(1).required(),
     }),
     updateAvailable: joi.boolean().default(false),
+    updatePending: joi.boolean().default(false),
+    updatePendingReason: joi.string().allow('minimum-age'),
+    updatePendingUntil: joi.string().isoDate(),
     updateKind: joi
         .object({
             kind: joi.string().allow('tag', 'digest', 'unknown').required(),
@@ -188,6 +196,9 @@ function addUpdateAvailableProperty(container: Container) {
         enumerable: true,
         get(this: Container) {
             if (this.image === undefined || this.result === undefined) {
+                return false;
+            }
+            if (this.updatePending) {
                 return false;
             }
 
@@ -276,14 +287,14 @@ function addUpdateKindProperty(container: Container) {
             ) {
                 return updateKind;
             }
-            if (!container.updateAvailable) {
+            if (!container.updateAvailable && !container.updatePending) {
                 return updateKind;
             }
 
             if (
                 container.image !== undefined &&
                 container.result !== undefined &&
-                container.updateAvailable
+                (container.updateAvailable || container.updatePending)
             ) {
                 if (container.image.tag.value !== container.result.tag) {
                     updateKind.kind = 'tag';
@@ -351,7 +362,10 @@ function resultChangedFunction(
         otherContainer === undefined ||
         this.result?.tag !== otherContainer.result?.tag ||
         this.result?.digest !== otherContainer.result?.digest ||
-        this.result?.created !== otherContainer.result?.created
+        this.result?.created !== otherContainer.result?.created ||
+        this.updatePending !== otherContainer.updatePending ||
+        this.updatePendingReason !== otherContainer.updatePendingReason ||
+        this.updatePendingUntil !== otherContainer.updatePendingUntil
     );
 }
 

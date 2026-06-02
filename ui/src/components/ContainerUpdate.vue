@@ -1,13 +1,45 @@
 <template>
   <div>
-    <v-list density="compact" v-if="updateAvailable">
+    <v-list density="compact" v-if="updateAvailable || updatePending">
+      <v-list-item v-if="updatePending">
+        <template v-slot:prepend>
+          <v-icon color="info">mdi-clock-outline</v-icon>
+        </template>
+        <v-list-item-title>Update pending</v-list-item-title>
+        <v-list-item-subtitle>
+          {{ updatePendingReason }}
+        </v-list-item-subtitle>
+      </v-list-item>
+      <v-list-item v-if="updatePendingUntil">
+        <template v-slot:prepend>
+          <v-icon color="secondary">mdi-calendar-clock</v-icon>
+        </template>
+        <v-list-item-title>Pending until</v-list-item-title>
+        <v-list-item-subtitle>
+          {{ $filters.dateTime(updatePendingUntil) }}
+        </v-list-item-subtitle>
+      </v-list-item>
+      <v-list-item v-if="minAge">
+        <template v-slot:prepend>
+          <v-icon color="secondary">mdi-timer-sand</v-icon>
+        </template>
+        <v-list-item-title>Minimum age</v-list-item-title>
+        <v-list-item-subtitle>
+          {{ minAge }}
+        </v-list-item-subtitle>
+      </v-list-item>
       <v-list-item v-if="result.tag">
         <template v-slot:prepend>
           <v-icon color="secondary">mdi-tag</v-icon>
         </template>
         <v-list-item-title>
           Tag
-          <v-chip v-if="semver" size="x-small" variant="outlined" color="success" label
+          <v-chip
+            v-if="semver"
+            size="x-small"
+            variant="outlined"
+            color="success"
+            label
             >semver</v-chip
           >
         </v-list-item-title>

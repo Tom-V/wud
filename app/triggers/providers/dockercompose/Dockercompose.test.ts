@@ -1,7 +1,9 @@
+import fs from 'fs/promises';
 import log from '../../../log';
 import Dockercompose, { doesContainerBelongToCompose } from './Dockercompose';
 import { testTriggerProvider } from '../TriggerTestHelper';
 
+jest.mock('fs/promises');
 jest.mock('../../../registry', () => ({
     getState() {
         return {
@@ -17,8 +19,27 @@ jest.mock('../../../registry', () => ({
     },
 }));
 
+type RecursivePartial<T> = {
+    [P in keyof T]?: RecursivePartial<T[P]>;
+};
+
 const dockercompose = new Dockercompose();
 dockercompose.log = log;
+dockercompose.configuration = {
+    composeFileLabel: 'wud.compose.file',
+};
+
+afterEach(() => {
+    jest.restoreAllMocks();
+});
+
+beforeEach(() => {
+    dockercompose.configuration = {
+        composeFileLabel: 'wud.compose.file',
+    };
+    dockercompose.processComposeFile =
+        Dockercompose.prototype.processComposeFile;
+});
 
 const configurationValid = {
     file: '/path/to/docker-compose.yml',
@@ -140,13 +161,12 @@ test('automatic compose label is used without explicit configuration', () => {
     ).toBe('/some/path/automatic-compose.yaml');
 });
 
-import fs from 'fs/promises';
-jest.mock('fs/promises');
-
 describe('Dockercompose Trigger - file operations', () => {
     beforeEach(() => {
         jest.clearAllMocks();
         dockercompose.configuration = { ...configurationValid };
+        dockercompose.processComposeFile =
+            Dockercompose.prototype.processComposeFile;
     });
 
     test('initTrigger should verify file access if file configured', async () => {
@@ -198,4 +218,35 @@ describe('Dockercompose Trigger - file operations', () => {
             [container],
         );
     });
+
+test('processComposeFile refuses pending updates before writing compose file', async () => {
+    (fs.readFile as jest.Mock).mockResolvedValue(
+        Buffer.from('services:\n  svc1:\n    image: myimage:1.0.0\n'),
+    );
+    (fs.access as jest.Mock).mockResolvedValue(undefined);
+    const sampleContainer: RecursivePartial<Container> = {
+        name: 'svc1',
+        image: {
+            name: 'myimage',
+            tag: { value: '1.0.0' },
+            registry: { name: 'hub', url: 'local' },
+        },
+        updateKind: {
+            kind: 'tag',
+            remoteValue: '2.0.0',
+        },
+        watcher: 'local',
+    };
+    const pendingContainer = {
+        ...sampleContainer,
+        updatePending: true,
+        updatePendingUntil: '2026-06-01T12:00:00.000Z',
+    };
+
+    await expect(
+        dockercompose.processComposeFile('/tmp/docker-compose.yml', [
+            pendingContainer,
+        ]),
+    ).rejects.toThrow('pending until 2026-06-01T12:00:00.000Z');
+    expect(fs.writeFile).not.toHaveBeenCalled();
 });

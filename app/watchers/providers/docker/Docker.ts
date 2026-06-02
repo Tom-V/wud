@@ -18,6 +18,7 @@ import {
     wudTagIncludePrerelease,
     wudTagTransform,
     wudWatchDigest,
+    wudWatchMinAge,
     wudLinkTemplate,
     wudDisplayName,
     wudDisplayIcon,
@@ -36,6 +37,7 @@ import { getWatchContainerGauge } from '../../../prometheus/watcher';
 import Watcher from '../../Watcher';
 import { ComponentConfiguration } from '../../../registry/Component';
 import { Logger } from '../../../log';
+import { isDuration, parseDurationMs } from '../../../duration';
 
 export interface DockerWatcherConfiguration extends ComponentConfiguration {
     socket: string;
@@ -50,6 +52,7 @@ export interface DockerWatcherConfiguration extends ComponentConfiguration {
     watchall: boolean;
     includeprerelease: boolean;
     watchdigest?: any;
+    minage: string;
     watchevents: boolean;
     watchatstart: boolean;
 }
@@ -84,6 +87,27 @@ function parseBooleanLabel(
         : undefined;
 }
 
+function normalizeDuration(duration: string) {
+    return duration.trim().toLowerCase();
+}
+
+function validateDuration(duration: string) {
+    const normalizedDuration = normalizeDuration(duration);
+    parseDurationMs(normalizedDuration);
+    return normalizedDuration;
+}
+
+function getMinAge(
+    minAgeLabelValue: string | undefined,
+    watcherMinAge: string,
+) {
+    return validateDuration(
+        minAgeLabelValue !== undefined && minAgeLabelValue !== ''
+            ? minAgeLabelValue
+            : watcherMinAge,
+    );
+}
+
 function getWudLabels(labels: Record<string, string> | undefined = {}) {
     return Object.fromEntries(
         Object.entries(labels)
@@ -110,6 +134,7 @@ function isCachedContainerValid(
     containerInStore: Container,
     currentLabels: Record<string, string> | undefined,
     watcherIncludePrerelease: boolean,
+    watcherMinAge: string,
 ) {
     const currentWudLabels = getWudLabels(currentLabels);
     const cachedWudLabels = getWudLabels(containerInStore.labels);
@@ -121,10 +146,20 @@ function isCachedContainerValid(
     const currentIncludePrerelease =
         parseBooleanLabel(currentLabels?.[wudTagIncludePrerelease]) ??
         watcherIncludePrerelease;
+    let currentMinAge: string;
+    try {
+        currentMinAge = getMinAge(
+            currentLabels?.[wudWatchMinAge],
+            watcherMinAge,
+        );
+    } catch {
+        return false;
+    }
 
     return (
         (containerInStore.includePrerelease ?? false) ===
-        currentIncludePrerelease
+            currentIncludePrerelease &&
+        (containerInStore.minAge ?? '0s') === currentMinAge
     );
 }
 
@@ -254,6 +289,33 @@ function getTagCandidates(
     return filteredTags;
 }
 
+function hasUpdateCandidate(container: Container, result: any) {
+    if (
+        container.image.digest.watch &&
+        container.image.digest.value !== undefined &&
+        result.digest !== undefined
+    ) {
+        return container.image.digest.value !== result.digest;
+    }
+
+    const localTag = transformTag(
+        container.transformTags,
+        container.image.tag.value,
+    );
+    const remoteTag = transformTag(container.transformTags, result.tag);
+    if (localTag !== remoteTag) {
+        return true;
+    }
+
+    if (container.image.created !== undefined && result.created !== undefined) {
+        return (
+            new Date(container.image.created).getTime() !==
+            new Date(result.created).getTime()
+        );
+    }
+    return false;
+}
+
 /**
  * Get the Docker Registry by name.
  */
@@ -364,6 +426,16 @@ export class Docker extends Watcher {
             watchall: this.joi.boolean().default(false),
             includeprerelease: this.joi.boolean().default(false),
             watchdigest: this.joi.any(),
+            minage: this.joi
+                .string()
+                .custom((value, helpers) => {
+                    const normalizedValue = normalizeDuration(value);
+                    if (!isDuration(normalizedValue)) {
+                        return helpers.error('any.invalid');
+                    }
+                    return normalizedValue;
+                })
+                .default('0s'),
             watchevents: this.joi.boolean().default(true),
             watchatstart: this.joi.boolean().default(true),
         });
@@ -646,6 +718,9 @@ export class Docker extends Watcher {
 
         // Reset previous error if so
         delete containerWithResult.error;
+        delete containerWithResult.updatePendingReason;
+        delete containerWithResult.updatePendingUntil;
+        containerWithResult.updatePending = false;
         logContainer.debug('Start watching');
 
         try {
@@ -695,6 +770,7 @@ export class Docker extends Watcher {
                 container.Labels[wudTagExclude],
                 container.Labels[wudTagIncludePrerelease],
                 container.Labels[wudTagTransform],
+                container.Labels[wudWatchMinAge],
                 container.Labels[wudLinkTemplate],
                 container.Labels[wudDisplayName],
                 container.Labels[wudDisplayIcon],
@@ -745,6 +821,162 @@ export class Docker extends Watcher {
         }
     }
 
+    private async applyMinimumAge(
+        container: Container,
+        result: any,
+        registryProvider: any,
+        logContainer: Logger,
+    ) {
+        delete container.updatePendingReason;
+        delete container.updatePendingUntil;
+        container.updatePending = false;
+
+        const minAgeMs = parseDurationMs(container.minAge ?? '0s');
+        if (minAgeMs === 0 || !hasUpdateCandidate(container, result)) {
+            return;
+        }
+
+        await this.addRemoteCreatedToResult(
+            container,
+            result,
+            registryProvider,
+            logContainer,
+        );
+        if (!result.created) {
+            logContainer.warn(
+                `Unable to parse remote image creation date for ${container.image.name}:${result.tag}; minimum age cannot be applied (${result.created})`,
+            );
+            return;
+        }
+
+        const pendingUntil = this.getPendingUntil(result, minAgeMs);
+        if (!pendingUntil) {
+            return;
+        }
+
+        container.updatePending = true;
+        container.updatePendingReason = 'minimum-age';
+        container.updatePendingUntil = pendingUntil.toISOString();
+        logContainer.info(
+            `Update candidate ${container.image.name}:${result.tag} is pending until ${container.updatePendingUntil} because of minimum age ${container.minAge}`,
+        );
+    }
+
+    private async addRemoteCreatedToResult(
+        container: Container,
+        result: any,
+        registryProvider: any,
+        logContainer: Logger,
+    ) {
+        if (result.created) {
+            return;
+        }
+        try {
+            const imageToGetMetadataFrom = JSON.parse(
+                JSON.stringify(container.image),
+            );
+            if (result.tag) {
+                imageToGetMetadataFrom.tag.value = result.tag;
+            }
+            const remoteManifest =
+                await registryProvider.getImageManifestDigest(
+                    imageToGetMetadataFrom,
+                    result.digest,
+                );
+            result.created = remoteManifest.created;
+        } catch (e: any) {
+            logContainer.warn(
+                `Unable to determine remote image creation date for ${container.image.name}:${result.tag}; minimum age cannot be applied (${e.message})`,
+            );
+        }
+    }
+
+    private getPendingUntil(result: any, minAgeMs: number) {
+        const createdTime = new Date(result.created).getTime();
+        if (Number.isNaN(createdTime)) {
+            return undefined;
+        }
+
+        const pendingUntil = new Date(createdTime + minAgeMs);
+        return pendingUntil.getTime() > Date.now() ? pendingUntil : undefined;
+    }
+
+    private async getTagCandidateResult(
+        container: Container,
+        tagCandidate: string,
+        registryProvider: any,
+        logContainer: Logger,
+        minAgeMs: number,
+    ) {
+        const result: any = { tag: tagCandidate };
+        if (minAgeMs > 0) {
+            await this.addRemoteCreatedToResult(
+                container,
+                result,
+                registryProvider,
+                logContainer,
+            );
+        }
+        return result;
+    }
+
+    private async getBestTagCandidateResult(
+        container: Container,
+        tagsCandidates: string[],
+        registryProvider: any,
+        logContainer: Logger,
+    ) {
+        delete container.updatePendingReason;
+        delete container.updatePendingUntil;
+        container.updatePending = false;
+
+        if (!tagsCandidates || tagsCandidates.length === 0) {
+            return undefined;
+        }
+
+        const minAgeMs = parseDurationMs(container.minAge ?? '0s');
+        if (minAgeMs === 0) {
+            return { tag: tagsCandidates[0] };
+        }
+
+        let newestPendingResult: any;
+        let newestPendingUntil: Date | undefined;
+        for (const tagCandidate of tagsCandidates) {
+            const result = await this.getTagCandidateResult(
+                container,
+                tagCandidate,
+                registryProvider,
+                logContainer,
+                minAgeMs,
+            );
+            const createdTime = new Date(result.created).getTime();
+            if (Number.isNaN(createdTime)) {
+                logContainer.warn(
+                    `Unable to parse remote image creation date for ${container.image.name}:${result.tag}; minimum age cannot be applied (${result.created})`,
+                );
+                return result;
+            }
+
+            const pendingUntil = this.getPendingUntil(result, minAgeMs);
+            if (!pendingUntil) {
+                return result;
+            }
+
+            if (!newestPendingResult) {
+                newestPendingResult = result;
+                newestPendingUntil = pendingUntil;
+            }
+        }
+
+        container.updatePending = true;
+        container.updatePendingReason = 'minimum-age';
+        container.updatePendingUntil = newestPendingUntil!.toISOString();
+        logContainer.info(
+            `Update candidate ${container.image.name}:${newestPendingResult.tag} is pending until ${container.updatePendingUntil} because of minimum age ${container.minAge}`,
+        );
+        return newestPendingResult;
+    }
+
     /**
      * Find new version for a Container.
      */
@@ -783,6 +1015,16 @@ export class Docker extends Watcher {
                 logContainer,
             );
 
+            const tagCandidateResult = await this.getBestTagCandidateResult(
+                container,
+                tagsCandidates,
+                registryProvider,
+                logContainer,
+            );
+            if (tagCandidateResult) {
+                Object.assign(result, tagCandidateResult);
+            }
+
             // Must watch digest? => Find local/remote digests on registry
             if (watchDigest && container.image.digest.repo) {
                 // If we have a tag candidate BUT we also watch digest
@@ -792,9 +1034,7 @@ export class Docker extends Watcher {
                 const imageToGetDigestFrom = JSON.parse(
                     JSON.stringify(container.image),
                 );
-                if (tagsCandidates.length > 0) {
-                    [imageToGetDigestFrom.tag.value] = tagsCandidates;
-                }
+                imageToGetDigestFrom.tag.value = result.tag;
 
                 const remoteDigest =
                     await registryProvider.getImageManifestDigest(
@@ -802,7 +1042,7 @@ export class Docker extends Watcher {
                     );
 
                 result.digest = remoteDigest.digest;
-                result.created = remoteDigest.created;
+                result.created = result.created ?? remoteDigest.created;
 
                 if (remoteDigest.version === 2) {
                     // Regular v2 manifest => Get manifest digest
@@ -827,9 +1067,13 @@ export class Docker extends Watcher {
                 }
             }
 
-            // The first one in the array is the highest
-            if (tagsCandidates && tagsCandidates.length > 0) {
-                [result.tag] = tagsCandidates;
+            if (!tagCandidateResult) {
+                await this.applyMinimumAge(
+                    container,
+                    result,
+                    registryProvider,
+                    logContainer,
+                );
             }
         }
         return result;
@@ -844,6 +1088,7 @@ export class Docker extends Watcher {
         excludeTags: string,
         includePrereleaseLabel: string,
         transformTags: string,
+        minAgeLabel: string,
         linkTemplate: string,
         displayName: string,
         displayIcon: string,
@@ -861,6 +1106,7 @@ export class Docker extends Watcher {
                 containerInStore,
                 container.Labels,
                 this.configuration.includeprerelease,
+                this.configuration.minage,
             )
         ) {
             this.log.debug(`Container ${containerInStore.id} already in store`);
@@ -925,6 +1171,7 @@ export class Docker extends Watcher {
         const includePrerelease =
             parseBooleanLabel(includePrereleaseLabel) ??
             this.configuration.includeprerelease;
+        const minAge = getMinAge(minAgeLabel, this.configuration.minage);
         return this.normalizeContainer({
             id: containerId,
             name: containerName,
@@ -934,6 +1181,7 @@ export class Docker extends Watcher {
             excludeTags,
             includePrerelease,
             transformTags,
+            minAge,
             linkTemplate,
             displayName,
             displayIcon,
@@ -964,6 +1212,7 @@ export class Docker extends Watcher {
                 tag: tagName,
             },
             updateAvailable: false,
+            updatePending: false,
             updateKind: { kind: 'unknown' },
         } as Container);
     }
