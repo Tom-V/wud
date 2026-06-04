@@ -31,6 +31,22 @@ export interface ContainerResult {
     digest?: string;
     created?: string;
     link?: string;
+    updateKind?: ContainerUpdateKind;
+    updateAvailable?: boolean;
+    updatePending?: boolean;
+    updatePendingReason?: 'minimum-age';
+    updatePendingUntil?: string;
+    selected?: boolean;
+}
+
+export interface ContainerResultSelection {
+    mode: 'auto' | 'manual';
+    tag?: string;
+    digest?: string;
+    created?: string;
+    baselineTag?: string;
+    baselineDigest?: string;
+    baselineCreated?: string;
 }
 
 export interface ContainerUpdateKind {
@@ -58,6 +74,8 @@ export interface Container {
     triggerExclude?: string;
     image: ContainerImage;
     result?: ContainerResult;
+    results: ContainerResult[];
+    resultSelection: ContainerResultSelection;
     error?: {
         message: string;
     };
@@ -69,6 +87,38 @@ export interface Container {
     labels?: Record<string, string>;
     resultChanged?: (otherContainer: Container | undefined) => boolean;
 }
+
+const updateKindSchema = joi.object({
+    kind: joi.string().allow('tag', 'digest', 'unknown').required(),
+    localValue: joi.string(),
+    remoteValue: joi.string(),
+    semverDiff: joi
+        .string()
+        .allow('major', 'minor', 'patch', 'prerelease', 'unknown'),
+});
+
+const resultSchema = joi.object({
+    tag: joi.string().min(1),
+    digest: joi.string(),
+    created: joi.string().isoDate(),
+    link: joi.string(),
+    updateKind: updateKindSchema,
+    updateAvailable: joi.boolean(),
+    updatePending: joi.boolean(),
+    updatePendingReason: joi.string().allow('minimum-age'),
+    updatePendingUntil: joi.string().isoDate(),
+    selected: joi.boolean(),
+});
+
+const resultSelectionSchema = joi.object({
+    mode: joi.string().allow('auto', 'manual').required(),
+    tag: joi.string().min(1),
+    digest: joi.string(),
+    created: joi.string().isoDate(),
+    baselineTag: joi.string().min(1),
+    baselineDigest: joi.string(),
+    baselineCreated: joi.string().isoDate(),
+});
 
 // Container data schema
 const schema = joi.object({
@@ -116,12 +166,9 @@ const schema = joi.object({
             created: joi.string().isoDate(),
         })
         .required(),
-    result: joi.object({
-        tag: joi.string().min(1),
-        digest: joi.string(),
-        created: joi.string().isoDate(),
-        link: joi.string(),
-    }),
+    result: resultSchema,
+    results: joi.array().items(resultSchema).default([]),
+    resultSelection: resultSelectionSchema.default({ mode: 'auto' }),
     error: joi.object({
         message: joi.string().min(1).required(),
     }),
@@ -129,16 +176,7 @@ const schema = joi.object({
     updatePending: joi.boolean().default(false),
     updatePendingReason: joi.string().allow('minimum-age'),
     updatePendingUntil: joi.string().isoDate(),
-    updateKind: joi
-        .object({
-            kind: joi.string().allow('tag', 'digest', 'unknown').required(),
-            localValue: joi.string(),
-            remoteValue: joi.string(),
-            semverDiff: joi
-                .string()
-                .allow('major', 'minor', 'patch', 'prerelease', 'unknown'),
-        })
-        .default({ kind: 'unknown' }),
+    updateKind: updateKindSchema.default({ kind: 'unknown' }),
     resultChanged: joi.function(),
     labels: joi.object(),
 });
@@ -186,6 +224,106 @@ function getLink(container: Container, originalTagValue: string) {
     return eval('`' + container.linkTemplate + '`');
 }
 
+function hasUpdateCandidate(container: Container, result: ContainerResult) {
+    if (container.image === undefined || result === undefined) {
+        return false;
+    }
+
+    // Compare digests if we have them
+    if (
+        container.image.digest.watch &&
+        container.image.digest.value !== undefined &&
+        result.digest !== undefined
+    ) {
+        return container.image.digest.value !== result.digest;
+    }
+
+    let updateAvailable = false;
+    if (result.tag !== undefined) {
+        const localTag = transformTag(
+            container.transformTags,
+            container.image.tag.value,
+        );
+        const remoteTag = transformTag(container.transformTags, result.tag);
+        updateAvailable = localTag !== remoteTag;
+    }
+
+    // Fallback to image created date (especially for legacy v1 manifests)
+    if (container.image.created !== undefined && result.created !== undefined) {
+        const createdDate = new Date(container.image.created).getTime();
+        const createdDateResult = new Date(result.created).getTime();
+
+        updateAvailable = updateAvailable || createdDate !== createdDateResult;
+    }
+    return updateAvailable;
+}
+
+function getUpdateKind(
+    container: Container,
+    result: ContainerResult | undefined,
+    candidateUpdateAvailable?: boolean,
+    candidateUpdatePending?: boolean,
+) {
+    const updateKind: ContainerUpdateKind = {
+        kind: 'unknown',
+        localValue: undefined,
+        remoteValue: undefined,
+        semverDiff: undefined,
+    };
+    if (container.image === undefined || result === undefined) {
+        return updateKind;
+    }
+    if (!candidateUpdateAvailable && !candidateUpdatePending) {
+        return updateKind;
+    }
+
+    if (result.tag !== undefined && container.image.tag.value !== result.tag) {
+        updateKind.kind = 'tag';
+        let semverDiffWud: ContainerUpdateKind['semverDiff'] = 'unknown';
+        const isSemver = container.image.tag.semver;
+        if (isSemver) {
+            const semverDiff = diffSemver(
+                transformTag(
+                    container.transformTags,
+                    container.image.tag.value,
+                ),
+                transformTag(container.transformTags, result.tag),
+            );
+            switch (semverDiff) {
+                case 'major':
+                    semverDiffWud = 'major';
+                    break;
+                case 'minor':
+                    semverDiffWud = 'minor';
+                    break;
+                case 'patch':
+                    semverDiffWud = 'patch';
+                    break;
+                case 'premajor':
+                case 'preminor':
+                case 'prepatch':
+                case 'prerelease':
+                    semverDiffWud = 'prerelease';
+                    break;
+                default:
+                    semverDiffWud = 'unknown';
+            }
+        }
+        updateKind.localValue = container.image.tag.value;
+        updateKind.remoteValue = result.tag;
+        updateKind.semverDiff = semverDiffWud;
+    } else if (
+        container.image.digest &&
+        result.digest !== undefined &&
+        container.image.digest.value !== result.digest
+    ) {
+        updateKind.kind = 'digest';
+        updateKind.localValue = container.image.digest.value;
+        updateKind.remoteValue = result.digest;
+    }
+    return updateKind;
+}
+
 /**
  * Computed function to check whether there is an update.
  * @param container
@@ -201,42 +339,7 @@ function addUpdateAvailableProperty(container: Container) {
             if (this.updatePending) {
                 return false;
             }
-
-            // Compare digests if we have them
-            if (
-                this.image.digest.watch &&
-                this.image.digest.value !== undefined &&
-                this.result.digest !== undefined
-            ) {
-                return this.image.digest.value !== this.result.digest;
-            }
-
-            // Compare tags otherwise
-            let updateAvailable = false;
-            const localTag = transformTag(
-                container.transformTags,
-                this.image.tag.value,
-            );
-            const remoteTag = transformTag(
-                container.transformTags,
-                this.result.tag,
-            );
-            updateAvailable = localTag !== remoteTag;
-
-            // Fallback to image created date (especially for legacy v1 manifests)
-            if (
-                this.image.created !== undefined &&
-                this.result.created !== undefined
-            ) {
-                const createdDate = new Date(this.image.created).getTime();
-                const createdDateResult = new Date(
-                    this.result.created!,
-                ).getTime();
-
-                updateAvailable =
-                    updateAvailable || createdDate !== createdDateResult;
-            }
-            return updateAvailable;
+            return hasUpdateCandidate(container, this.result);
         },
     });
 }
@@ -256,14 +359,163 @@ function addLinkProperty(container: Container) {
         });
 
         if (container.result) {
-            Object.defineProperty(container.result, 'link', {
-                enumerable: true,
-                get() {
-                    return getLink(container, container.result.tag ?? '');
-                },
-            });
+            addResultLinkProperty(container, container.result);
         }
+        container.results.forEach((result) => {
+            if (result.tag) {
+                addResultLinkProperty(container, result);
+            }
+        });
     }
+}
+
+function addResultLinkProperty(container: Container, result: ContainerResult) {
+    Object.defineProperty(result, 'link', {
+        enumerable: true,
+        get() {
+            return getLink(container, result.tag ?? '');
+        },
+    });
+}
+
+function resultMatches(
+    result1: ContainerResult | undefined,
+    result2: ContainerResult | undefined,
+) {
+    if (result1 === undefined || result2 === undefined) {
+        return false;
+    }
+
+    if (result2.tag === undefined && result2.digest !== undefined) {
+        return (
+            result1.digest === result2.digest &&
+            (result2.created === undefined ||
+                result1.created === result2.created)
+        );
+    }
+
+    return (
+        result1.tag === result2.tag &&
+        result1.digest === result2.digest &&
+        result1.created === result2.created
+    );
+}
+
+function hasReferenceFields(reference: Partial<ContainerResult> | undefined) {
+    return (
+        reference !== undefined &&
+        (reference.tag !== undefined ||
+            reference.digest !== undefined ||
+            reference.created !== undefined)
+    );
+}
+
+export function candidateMatchesReference(
+    candidate: ContainerResult | undefined,
+    reference: Partial<ContainerResult> | undefined,
+) {
+    if (!candidate || !hasReferenceFields(reference)) {
+        return false;
+    }
+    if (reference?.tag !== undefined && candidate.tag !== reference.tag) {
+        return false;
+    }
+    if (
+        reference?.digest !== undefined &&
+        candidate.digest !== reference.digest
+    ) {
+        return false;
+    }
+    if (
+        reference?.created !== undefined &&
+        candidate.created !== reference.created
+    ) {
+        return false;
+    }
+    return true;
+}
+
+export function getCandidateReference(candidate: ContainerResult | undefined) {
+    return {
+        tag: candidate?.tag,
+        digest: candidate?.digest,
+        created: candidate?.created,
+    };
+}
+
+export function getSelectionReference(
+    selection: ContainerResultSelection | undefined,
+) {
+    return {
+        tag: selection?.tag,
+        digest: selection?.digest,
+        created: selection?.created,
+    };
+}
+
+export function getSelectionBaselineReference(
+    selection: ContainerResultSelection | undefined,
+) {
+    return {
+        tag: selection?.baselineTag,
+        digest: selection?.baselineDigest,
+        created: selection?.baselineCreated,
+    };
+}
+
+export function getAutomaticResultCandidate(results: ContainerResult[] = []) {
+    return results.find((result) => !result.updatePending) ?? results[0];
+}
+
+export function applyResultCandidate(
+    container: Container,
+    candidate: ContainerResult | undefined,
+) {
+    delete container.updatePendingReason;
+    delete container.updatePendingUntil;
+    container.updatePending = false;
+
+    if (!candidate) {
+        container.result = { tag: container.image.tag.value };
+        return;
+    }
+
+    const selectedResult: ContainerResult = {
+        tag: candidate.tag ?? container.image.tag.value,
+    };
+    if (candidate.digest !== undefined) {
+        selectedResult.digest = candidate.digest;
+    }
+    if (candidate.created !== undefined) {
+        selectedResult.created = candidate.created;
+    }
+    container.result = selectedResult;
+
+    container.updatePending = candidate.updatePending ?? false;
+    if (candidate.updatePendingReason !== undefined) {
+        container.updatePendingReason = candidate.updatePendingReason;
+    }
+    if (candidate.updatePendingUntil !== undefined) {
+        container.updatePendingUntil = candidate.updatePendingUntil;
+    }
+}
+
+function addResultsProperties(container: Container) {
+    container.results = container.results.filter((result) => {
+        const hasCandidateUpdate = hasUpdateCandidate(container, result);
+        result.updatePending = result.updatePending ?? false;
+        result.updateAvailable = result.updatePending
+            ? false
+            : hasCandidateUpdate;
+        result.updateKind = getUpdateKind(
+            container,
+            result,
+            result.updateAvailable,
+            result.updatePending && hasCandidateUpdate,
+        );
+        result.selected = resultMatches(container.result, result);
+        return hasCandidateUpdate;
+    });
 }
 
 /**
@@ -275,76 +527,12 @@ function addUpdateKindProperty(container: Container) {
     Object.defineProperty(container, 'updateKind', {
         enumerable: true,
         get(this: Container) {
-            const updateKind: ContainerUpdateKind = {
-                kind: 'unknown',
-                localValue: undefined,
-                remoteValue: undefined,
-                semverDiff: undefined,
-            };
-            if (
-                container.image === undefined ||
-                container.result === undefined
-            ) {
-                return updateKind;
-            }
-            if (!container.updateAvailable && !container.updatePending) {
-                return updateKind;
-            }
-
-            if (
-                container.image !== undefined &&
-                container.result !== undefined &&
-                (container.updateAvailable || container.updatePending)
-            ) {
-                if (container.image.tag.value !== container.result.tag) {
-                    updateKind.kind = 'tag';
-                    let semverDiffWud: ContainerUpdateKind['semverDiff'] =
-                        'unknown';
-                    const isSemver = container.image.tag.semver;
-                    if (isSemver) {
-                        const semverDiff = diffSemver(
-                            transformTag(
-                                container.transformTags,
-                                container.image.tag.value,
-                            ),
-                            transformTag(
-                                container.transformTags,
-                                container.result.tag,
-                            ),
-                        );
-                        switch (semverDiff) {
-                            case 'major':
-                                semverDiffWud = 'major';
-                                break;
-                            case 'minor':
-                                semverDiffWud = 'minor';
-                                break;
-                            case 'patch':
-                                semverDiffWud = 'patch';
-                                break;
-                            case 'premajor':
-                            case 'preminor':
-                            case 'prepatch':
-                            case 'prerelease':
-                                semverDiffWud = 'prerelease';
-                                break;
-                            default:
-                                semverDiffWud = 'unknown';
-                        }
-                    }
-                    updateKind.localValue = container.image.tag.value;
-                    updateKind.remoteValue = container.result.tag;
-                    updateKind.semverDiff = semverDiffWud;
-                } else if (
-                    container.image.digest &&
-                    container.image.digest.value !== container.result.digest
-                ) {
-                    updateKind.kind = 'digest';
-                    updateKind.localValue = container.image.digest.value;
-                    updateKind.remoteValue = container.result.digest;
-                }
-            }
-            return updateKind;
+            return getUpdateKind(
+                container,
+                container.result,
+                container.updateAvailable,
+                container.updatePending,
+            );
         },
     });
 }
@@ -365,7 +553,19 @@ function resultChangedFunction(
         this.result?.created !== otherContainer.result?.created ||
         this.updatePending !== otherContainer.updatePending ||
         this.updatePendingReason !== otherContainer.updatePendingReason ||
-        this.updatePendingUntil !== otherContainer.updatePendingUntil
+        this.updatePendingUntil !== otherContainer.updatePendingUntil ||
+        this.resultSelection?.mode !== otherContainer.resultSelection?.mode ||
+        this.resultSelection?.tag !== otherContainer.resultSelection?.tag ||
+        this.resultSelection?.digest !==
+            otherContainer.resultSelection?.digest ||
+        this.resultSelection?.created !==
+            otherContainer.resultSelection?.created ||
+        this.resultSelection?.baselineTag !==
+            otherContainer.resultSelection?.baselineTag ||
+        this.resultSelection?.baselineDigest !==
+            otherContainer.resultSelection?.baselineDigest ||
+        this.resultSelection?.baselineCreated !==
+            otherContainer.resultSelection?.baselineCreated
     );
 }
 
@@ -397,6 +597,7 @@ export function validate(container: any): Container {
     // Add computed properties
     addUpdateAvailableProperty(containerValidated);
     addUpdateKindProperty(containerValidated);
+    addResultsProperties(containerValidated);
     addLinkProperty(containerValidated);
 
     // Add computed functions
@@ -415,6 +616,15 @@ export function flatten(container: Container) {
         transformKey: (key: string) => snakeCase(key),
     });
     delete containerFlatten.result_changed;
+    Object.keys(containerFlatten)
+        .filter(
+            (key) =>
+                key === 'results' ||
+                key.startsWith('results_') ||
+                key === 'result_selection' ||
+                key.startsWith('result_selection_'),
+        )
+        .forEach((key) => delete containerFlatten[key]);
     return containerFlatten;
 }
 

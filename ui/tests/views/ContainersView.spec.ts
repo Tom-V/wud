@@ -14,7 +14,20 @@ const mockContainers = [
     watcher: 'local',
     image: { registry: { name: 'hub' }, created: '2023-01-01T00:00:00Z' },
     updateAvailable: true,
-    updateKind: { semverDiff: 'minor' },
+    updateKind: { kind: 'tag', semverDiff: 'minor' },
+    results: [
+      {
+        tag: '2.0.0',
+        updateAvailable: true,
+        updateKind: { kind: 'tag', semverDiff: 'major' }
+      },
+      {
+        tag: '1.1.0',
+        updateAvailable: true,
+        selected: true,
+        updateKind: { kind: 'tag', semverDiff: 'minor' }
+      }
+    ],
     labels: { app: 'web', env: 'prod' }
   },
   {
@@ -63,7 +76,7 @@ describe('ContainersView', () => {
   });
 
   it('computes update kinds correctly', () => {
-    expect(Array.isArray(wrapper.vm.updateKinds)).toBe(true);
+    expect(wrapper.vm.updateKinds).toEqual(['major', 'minor']);
   });
 
   it('computes all container labels correctly', () => {
@@ -97,6 +110,15 @@ describe('ContainersView', () => {
     const filtered = wrapper.vm.containersFiltered;
     expect(filtered).toHaveLength(1);
     expect(filtered[0].updateAvailable).toBe(true);
+  });
+
+  it('filters containers by any candidate update kind', async () => {
+    wrapper.vm.updateKindSelected = 'major';
+    await wrapper.vm.$nextTick();
+
+    const filtered = wrapper.vm.containersFiltered;
+    expect(filtered).toHaveLength(1);
+    expect(filtered[0].id).toBe('1');
   });
 
   it('sorts containers by oldest first when enabled', async () => {

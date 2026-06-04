@@ -31,6 +31,10 @@ import {
     validate as validateContainer,
     fullName,
     Container,
+    applyResultCandidate,
+    candidateMatchesReference,
+    getSelectionBaselineReference,
+    getSelectionReference,
 } from '../../../model/container';
 import * as registry from '../../../registry';
 import { getWatchContainerGauge } from '../../../prometheus/watcher';
@@ -720,6 +724,7 @@ export class Docker extends Watcher {
         delete containerWithResult.error;
         delete containerWithResult.updatePendingReason;
         delete containerWithResult.updatePendingUntil;
+        containerWithResult.results = [];
         containerWithResult.updatePending = false;
         logContainer.debug('Start watching');
 
@@ -920,27 +925,25 @@ export class Docker extends Watcher {
         return result;
     }
 
-    private async getBestTagCandidateResult(
+    private async getTagCandidateResults(
         container: Container,
         tagsCandidates: string[],
         registryProvider: any,
         logContainer: Logger,
     ) {
-        delete container.updatePendingReason;
-        delete container.updatePendingUntil;
-        container.updatePending = false;
-
         if (!tagsCandidates || tagsCandidates.length === 0) {
-            return undefined;
+            return [];
         }
 
         const minAgeMs = parseDurationMs(container.minAge ?? '0s');
         if (minAgeMs === 0) {
-            return { tag: tagsCandidates[0] };
+            return tagsCandidates.map((tagCandidate) => ({
+                tag: tagCandidate,
+                updatePending: false,
+            }));
         }
 
-        let newestPendingResult: any;
-        let newestPendingUntil: Date | undefined;
+        const results: any[] = [];
         for (const tagCandidate of tagsCandidates) {
             const result = await this.getTagCandidateResult(
                 container,
@@ -954,27 +957,97 @@ export class Docker extends Watcher {
                 logContainer.warn(
                     `Unable to parse remote image creation date for ${container.image.name}:${result.tag}; minimum age cannot be applied (${result.created})`,
                 );
-                return result;
+                result.updatePending = false;
+                results.push(result);
+                continue;
             }
 
             const pendingUntil = this.getPendingUntil(result, minAgeMs);
-            if (!pendingUntil) {
-                return result;
+            result.updatePending = pendingUntil !== undefined;
+            if (pendingUntil) {
+                result.updatePendingReason = 'minimum-age';
+                result.updatePendingUntil = pendingUntil.toISOString();
             }
+            results.push(result);
+        }
+        return results;
+    }
 
-            if (!newestPendingResult) {
-                newestPendingResult = result;
-                newestPendingUntil = pendingUntil;
-            }
+    private getSelectedTagCandidateResult(
+        container: Container,
+        tagCandidateResults: any[],
+        logContainer: Logger,
+    ) {
+        delete container.updatePendingReason;
+        delete container.updatePendingUntil;
+        container.updatePending = false;
+
+        if (!tagCandidateResults || tagCandidateResults.length === 0) {
+            return undefined;
         }
 
+        const availableResult = tagCandidateResults.find(
+            (result) => !result.updatePending,
+        );
+        if (availableResult) {
+            return availableResult;
+        }
+
+        const newestPendingResult = tagCandidateResults[0];
         container.updatePending = true;
-        container.updatePendingReason = 'minimum-age';
-        container.updatePendingUntil = newestPendingUntil!.toISOString();
+        container.updatePendingReason = newestPendingResult.updatePendingReason;
+        container.updatePendingUntil = newestPendingResult.updatePendingUntil;
         logContainer.info(
             `Update candidate ${container.image.name}:${newestPendingResult.tag} is pending until ${container.updatePendingUntil} because of minimum age ${container.minAge}`,
         );
         return newestPendingResult;
+    }
+
+    private applyManualResultSelection(
+        container: Container,
+        result: any,
+        logContainer: Logger,
+    ) {
+        const resultSelection = container.resultSelection;
+        if (resultSelection?.mode !== 'manual') {
+            return;
+        }
+
+        const newestCandidate = container.results[0];
+        const baselineReference =
+            getSelectionBaselineReference(resultSelection);
+        if (!candidateMatchesReference(newestCandidate, baselineReference)) {
+            container.resultSelection = { mode: 'auto' };
+            logContainer.info(
+                `Manual result selection reset because a newer candidate was found for ${container.image.name}`,
+            );
+            return;
+        }
+
+        const selectionReference = getSelectionReference(resultSelection);
+        const selectedCandidate = container.results.find((candidate) =>
+            candidateMatchesReference(candidate, selectionReference),
+        );
+        if (!selectedCandidate) {
+            container.resultSelection = { mode: 'auto' };
+            logContainer.info(
+                `Manual result selection reset because the selected candidate was not found for ${container.image.name}`,
+            );
+            return;
+        }
+
+        applyResultCandidate(container, selectedCandidate);
+        result.tag = container.result?.tag;
+        if (container.result?.digest !== undefined) {
+            result.digest = container.result.digest;
+        } else {
+            delete result.digest;
+        }
+        if (container.result?.created !== undefined) {
+            result.created = container.result.created;
+        } else {
+            delete result.created;
+        }
     }
 
     /**
@@ -1015,14 +1088,23 @@ export class Docker extends Watcher {
                 logContainer,
             );
 
-            const tagCandidateResult = await this.getBestTagCandidateResult(
+            const tagCandidateResults = await this.getTagCandidateResults(
                 container,
                 tagsCandidates,
                 registryProvider,
                 logContainer,
             );
+            container.results = tagCandidateResults;
+
+            const tagCandidateResult = this.getSelectedTagCandidateResult(
+                container,
+                tagCandidateResults,
+                logContainer,
+            );
             if (tagCandidateResult) {
-                Object.assign(result, tagCandidateResult);
+                result.tag = tagCandidateResult.tag;
+                result.digest = tagCandidateResult.digest;
+                result.created = tagCandidateResult.created;
             }
 
             // Must watch digest? => Find local/remote digests on registry
@@ -1043,6 +1125,15 @@ export class Docker extends Watcher {
 
                 result.digest = remoteDigest.digest;
                 result.created = result.created ?? remoteDigest.created;
+
+                const selectedResult = container.results.find(
+                    (candidate) => candidate.tag === result.tag,
+                );
+                if (selectedResult) {
+                    selectedResult.digest = result.digest;
+                    selectedResult.created =
+                        selectedResult.created ?? result.created;
+                }
 
                 if (remoteDigest.version === 2) {
                     // Regular v2 manifest => Get manifest digest
@@ -1074,7 +1165,20 @@ export class Docker extends Watcher {
                     registryProvider,
                     logContainer,
                 );
+                if (hasUpdateCandidate(container, result)) {
+                    container.results = [
+                        {
+                            digest: result.digest,
+                            created: result.created,
+                            updatePending: container.updatePending,
+                            updatePendingReason: container.updatePendingReason,
+                            updatePendingUntil: container.updatePendingUntil,
+                        },
+                    ];
+                }
             }
+
+            this.applyManualResultSelection(container, result, logContainer);
         }
         return result;
     }
@@ -1211,6 +1315,7 @@ export class Docker extends Watcher {
             result: containerInStore?.result ?? {
                 tag: tagName,
             },
+            results: [],
             updateAvailable: false,
             updatePending: false,
             updateKind: { kind: 'unknown' },

@@ -3,6 +3,8 @@ import {
   refreshAllContainers,
   refreshContainer,
   deleteContainer,
+  selectContainerResult,
+  resetContainerResultSelection,
   getContainerTriggers,
   runTrigger
 } from '@/services/container';
@@ -94,6 +96,59 @@ describe('Container Service', () => {
         credentials: 'include'
       });
       expect(result).toBeDefined();
+    });
+  });
+
+  describe('selectContainerResult', () => {
+    it('persists a manual result selection', async () => {
+      const mockResult = { id: 'container1', resultSelection: { mode: 'manual' } };
+      fetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => mockResult
+      });
+
+      const result = await selectContainerResult('container1', {
+        tag: '1.1.0',
+        digest: 'sha256:new',
+        created: '2026-06-01T00:00:00.000Z'
+      });
+
+      expect(fetch).toHaveBeenCalledWith(
+        '/api/containers/container1/result-selection',
+        {
+          method: 'PUT',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            mode: 'manual',
+            tag: '1.1.0',
+            digest: 'sha256:new',
+            created: '2026-06-01T00:00:00.000Z'
+          })
+        }
+      );
+      expect(result).toEqual(mockResult);
+    });
+  });
+
+  describe('resetContainerResultSelection', () => {
+    it('resets a manual result selection', async () => {
+      const mockResult = { id: 'container1', resultSelection: { mode: 'auto' } };
+      fetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => mockResult
+      });
+
+      const result = await resetContainerResultSelection('container1');
+
+      expect(fetch).toHaveBeenCalledWith(
+        '/api/containers/container1/result-selection',
+        {
+          method: 'DELETE',
+          credentials: 'include'
+        }
+      );
+      expect(result).toEqual(mockResult);
     });
   });
 

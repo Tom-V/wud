@@ -87,6 +87,16 @@
                   : "Copy to clipboard"
               }}</span>
             </v-tooltip>
+            <v-chip
+              v-if="updateCandidateCount > 1"
+              label
+              variant="outlined"
+              color="secondary"
+              disabled
+            >
+              <v-icon start size="small">mdi-format-list-bulleted</v-icon>
+              {{ updateCandidateCount }} found
+            </v-chip>
           </span>
 
           <span v-if="smAndUp && oldestFirst" class="text-caption">
@@ -130,7 +140,11 @@
           <v-window v-model="tab">
             <v-window-item v-if="container.result">
               <container-update
+                :container-id="container.id"
                 :result="container.result"
+                :results="container.results"
+                :result-selection="container.resultSelection"
+                :current-tag="container.image.tag.value"
                 :semver="container.image.tag.semver"
                 :update-kind="container.updateKind"
                 :update-available="container.updateAvailable"
@@ -138,6 +152,7 @@
                 :update-pending-reason="container.updatePendingReason"
                 :update-pending-until="container.updatePendingUntil"
                 :min-age="container.minAge"
+                @container-updated="$emit('container-updated', $event)"
               />
             </v-window-item>
             <v-window-item>

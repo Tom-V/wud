@@ -3,6 +3,12 @@ import express from 'express';
 import nocache from 'nocache';
 import * as storeContainer from '../store/container';
 import * as registry from '../registry';
+import {
+    applyResultCandidate,
+    candidateMatchesReference,
+    getAutomaticResultCandidate,
+    getCandidateReference,
+} from '../model/container';
 import { getServerConfiguration } from '../configuration';
 import { mapComponentsToList } from './component';
 import Trigger from '../triggers/providers/Trigger';
@@ -78,6 +84,64 @@ function deleteContainer(req, res) {
             res.sendStatus(404);
         }
     }
+}
+
+function getResultSelectionPayload(body) {
+    return {
+        tag: body?.tag,
+        digest: body?.digest,
+        created: body?.created,
+    };
+}
+
+function selectContainerResult(req, res) {
+    const { id } = req.params;
+    const container = storeContainer.getContainer(id);
+    if (!container) {
+        res.sendStatus(404);
+        return;
+    }
+
+    const results = Array.isArray(container.results) ? container.results : [];
+    const mode = req.body?.mode ?? 'manual';
+    if (mode === 'auto') {
+        container.resultSelection = { mode: 'auto' };
+        applyResultCandidate(container, getAutomaticResultCandidate(results));
+        res.status(200).json(storeContainer.updateContainer(container));
+        return;
+    }
+
+    if (mode !== 'manual') {
+        res.status(400).json({ error: 'Unsupported result selection mode' });
+        return;
+    }
+
+    const selectionReference = getResultSelectionPayload(req.body);
+    const selectedCandidate = results.find((candidate) =>
+        candidateMatchesReference(candidate, selectionReference),
+    );
+    const baselineCandidate = results[0];
+    if (!selectedCandidate || !baselineCandidate) {
+        res.status(400).json({ error: 'Update candidate not found' });
+        return;
+    }
+
+    const selectedReference = getCandidateReference(selectedCandidate);
+    const baselineReference = getCandidateReference(baselineCandidate);
+    container.resultSelection = {
+        mode: 'manual',
+        ...selectedReference,
+        baselineTag: baselineReference.tag,
+        baselineDigest: baselineReference.digest,
+        baselineCreated: baselineReference.created,
+    };
+    applyResultCandidate(container, selectedCandidate);
+    res.status(200).json(storeContainer.updateContainer(container));
+}
+
+function resetContainerResultSelection(req, res) {
+    req.body = { mode: 'auto' };
+    selectContainerResult(req, res);
 }
 
 /**
@@ -246,6 +310,8 @@ export function init() {
     router.post('/watch', watchContainers);
     router.get('/:id', getContainer);
     router.delete('/:id', deleteContainer);
+    router.put('/:id/result-selection', selectContainerResult);
+    router.delete('/:id/result-selection', resetContainerResultSelection);
     router.get('/:id/triggers', getContainerTriggers);
     router.post('/:id/triggers/:triggerType/:triggerName', runTrigger);
     router.post('/:id/watch', watchContainer);

@@ -25,6 +25,30 @@ const mockContainer = {
     created: "2023-01-02T00:00:00Z",
     tag: "1.1.0",
   },
+  results: [
+    {
+      tag: "1.2.0",
+      updateAvailable: true,
+      selected: false,
+      updateKind: {
+        kind: "tag",
+        semverDiff: "minor",
+        remoteValue: "1.2.0",
+        localValue: "1.0.0",
+      },
+    },
+    {
+      tag: "1.1.0",
+      updateAvailable: true,
+      selected: true,
+      updateKind: {
+        kind: "tag",
+        semverDiff: "minor",
+        remoteValue: "1.1.0",
+        localValue: "1.0.0",
+      },
+    },
+  ],
   labels: {
     app: "test-app",
     env: "production",
@@ -59,6 +83,30 @@ describe("ContainerItem", () => {
 
   it("shows update available indicator when update is available", () => {
     expect(wrapper.vm.newVersion).toBe("1.1.0");
+  });
+
+  it("shows the number of found update candidates", () => {
+    expect(wrapper.vm.updateCandidateCount).toBe(2);
+    expect(wrapper.text()).toContain("2 found");
+  });
+
+  it("does not count unchanged current tag candidates", async () => {
+    await wrapper.setProps({
+      container: {
+        ...mockContainer,
+        results: [
+          {
+            tag: "1.0.0",
+          },
+          {
+            tag: "1.1.0",
+            updateAvailable: true,
+          },
+        ],
+      },
+    });
+
+    expect(wrapper.vm.updateCandidateCount).toBe(1);
   });
 
   it("displays correct update severity color for minor update", () => {

@@ -77,8 +77,284 @@ test('model should be validated when compliant', async () => {
             link: 'https://release-2.0.0.acme.com',
             tag: '2.0.0',
         },
+        results: [],
+        resultSelection: {
+            mode: 'auto',
+        },
         watcher: 'test',
     });
+});
+
+test('model should enrich all update candidate results', async () => {
+    const containerValidated = container.validate({
+        id: 'container-123456789',
+        name: 'test',
+        watcher: 'test',
+        linkTemplate: 'https://release-${major}.${minor}.${patch}.acme.com',
+        image: {
+            id: 'image-123456789',
+            registry: {
+                name: 'hub',
+                url: 'https://hub',
+            },
+            name: 'organization/image',
+            tag: {
+                value: '1.0.0',
+                semver: true,
+            },
+            digest: {
+                watch: false,
+            },
+            architecture: 'arch',
+            os: 'os',
+        },
+        result: {
+            tag: '2.0.0',
+        },
+        results: [
+            {
+                tag: '2.0.0',
+            },
+            {
+                tag: '1.1.0',
+                updatePending: true,
+                updatePendingReason: 'minimum-age',
+                updatePendingUntil: '2026-06-01T12:00:00.000Z',
+            },
+        ],
+    });
+
+    expect(containerValidated.results).toStrictEqual([
+        {
+            tag: '2.0.0',
+            link: 'https://release-2.0.0.acme.com',
+            updateAvailable: true,
+            updateKind: {
+                kind: 'tag',
+                localValue: '1.0.0',
+                remoteValue: '2.0.0',
+                semverDiff: 'major',
+            },
+            updatePending: false,
+            selected: true,
+        },
+        {
+            tag: '1.1.0',
+            link: 'https://release-1.1.0.acme.com',
+            updateAvailable: false,
+            updateKind: {
+                kind: 'tag',
+                localValue: '1.0.0',
+                remoteValue: '1.1.0',
+                semverDiff: 'minor',
+            },
+            updatePending: true,
+            updatePendingReason: 'minimum-age',
+            updatePendingUntil: '2026-06-01T12:00:00.000Z',
+            selected: false,
+        },
+    ]);
+});
+
+test('model should omit unchanged current tag from update candidate results', async () => {
+    const containerValidated = container.validate({
+        id: 'container-123456789',
+        name: 'test',
+        watcher: 'test',
+        image: {
+            id: 'image-123456789',
+            registry: {
+                name: 'hub',
+                url: 'https://hub',
+            },
+            name: 'organization/image',
+            tag: {
+                value: '1.0.0',
+                semver: true,
+            },
+            digest: {
+                watch: false,
+            },
+            architecture: 'arch',
+            os: 'os',
+        },
+        result: {
+            tag: '2.0.0',
+        },
+        results: [
+            {
+                tag: '2.0.0',
+            },
+            {
+                tag: '1.0.0',
+            },
+        ],
+    });
+
+    expect(containerValidated.results).toHaveLength(1);
+    expect(containerValidated.results[0].tag).toBe('2.0.0');
+});
+
+test('model should support digest-only update candidate results', async () => {
+    const containerValidated = container.validate({
+        id: 'container-123456789',
+        name: 'test',
+        watcher: 'test',
+        image: {
+            id: 'image-123456789',
+            registry: {
+                name: 'hub',
+                url: 'https://hub',
+            },
+            name: 'organization/image',
+            tag: {
+                value: '1.0.0',
+                semver: true,
+            },
+            digest: {
+                watch: true,
+                value: 'sha256:old',
+            },
+            architecture: 'arch',
+            os: 'os',
+        },
+        result: {
+            tag: '1.0.0',
+            digest: 'sha256:new',
+        },
+        results: [
+            {
+                digest: 'sha256:new',
+            },
+        ],
+    });
+
+    expect(containerValidated.results).toStrictEqual([
+        {
+            digest: 'sha256:new',
+            updateAvailable: true,
+            updateKind: {
+                kind: 'digest',
+                localValue: 'sha256:old',
+                remoteValue: 'sha256:new',
+                semverDiff: undefined,
+            },
+            updatePending: false,
+            selected: true,
+        },
+    ]);
+});
+
+test('model should validate manual result selection', async () => {
+    const containerValidated = container.validate({
+        id: 'container-123456789',
+        name: 'test',
+        watcher: 'test',
+        image: {
+            id: 'image-123456789',
+            registry: {
+                name: 'hub',
+                url: 'https://hub',
+            },
+            name: 'organization/image',
+            tag: {
+                value: '1.0.0',
+                semver: true,
+            },
+            digest: {
+                watch: false,
+            },
+            architecture: 'arch',
+            os: 'os',
+        },
+        result: {
+            tag: '1.1.0',
+        },
+        resultSelection: {
+            mode: 'manual',
+            tag: '1.1.0',
+            baselineTag: '1.2.0',
+        },
+    });
+
+    expect(containerValidated.resultSelection).toStrictEqual({
+        mode: 'manual',
+        tag: '1.1.0',
+        baselineTag: '1.2.0',
+    });
+});
+
+test('model should match candidate references using provided fields', async () => {
+    expect(
+        container.candidateMatchesReference(
+            {
+                tag: '1.1.0',
+                digest: 'sha256:new',
+                created: '2026-06-01T00:00:00.000Z',
+            },
+            {
+                tag: '1.1.0',
+            },
+        ),
+    ).toBe(true);
+    expect(
+        container.candidateMatchesReference(
+            {
+                tag: '1.1.0',
+                digest: 'sha256:new',
+            },
+            {
+                tag: '1.1.0',
+                digest: 'sha256:other',
+            },
+        ),
+    ).toBe(false);
+});
+
+test('model should apply a result candidate to the container result', async () => {
+    const containerValidated = container.validate({
+        id: 'container-123456789',
+        name: 'test',
+        watcher: 'test',
+        image: {
+            id: 'image-123456789',
+            registry: {
+                name: 'hub',
+                url: 'https://hub',
+            },
+            name: 'organization/image',
+            tag: {
+                value: '1.0.0',
+                semver: true,
+            },
+            digest: {
+                watch: false,
+            },
+            architecture: 'arch',
+            os: 'os',
+        },
+        result: {
+            tag: '2.0.0',
+        },
+    });
+
+    container.applyResultCandidate(containerValidated, {
+        tag: '1.1.0',
+        created: '2026-06-01T00:00:00.000Z',
+        updatePending: true,
+        updatePendingReason: 'minimum-age',
+        updatePendingUntil: '2026-06-02T00:00:00.000Z',
+    });
+
+    expect(containerValidated.result).toStrictEqual({
+        tag: '1.1.0',
+        created: '2026-06-01T00:00:00.000Z',
+    });
+    expect(containerValidated.updatePending).toBe(true);
+    expect(containerValidated.updatePendingReason).toBe('minimum-age');
+    expect(containerValidated.updatePendingUntil).toBe(
+        '2026-06-02T00:00:00.000Z',
+    );
 });
 
 test('model should not be validated when invalid', async () => {
@@ -430,6 +706,44 @@ test('flatten should be flatten the nested properties with underscores when call
         update_pending: false,
         watcher: 'test',
     });
+});
+
+test('flatten should omit result selection properties', async () => {
+    const containerValidated = container.validate({
+        id: 'container-123456789',
+        name: 'test',
+        watcher: 'test',
+        image: {
+            id: 'image-123456789',
+            registry: {
+                name: 'hub',
+                url: 'https://hub',
+            },
+            name: 'organization/image',
+            tag: {
+                value: '1.0.0',
+                semver: true,
+            },
+            digest: {
+                watch: false,
+            },
+            architecture: 'arch',
+            os: 'os',
+        },
+        result: {
+            tag: '1.1.0',
+        },
+        resultSelection: {
+            mode: 'manual',
+            tag: '1.1.0',
+            baselineTag: '1.2.0',
+        },
+    });
+
+    const containerFlattened = container.flatten(containerValidated);
+    expect(containerFlattened.result_selection_mode).toBeUndefined();
+    expect(containerFlattened.result_selection_tag).toBeUndefined();
+    expect(containerFlattened.result_selection_baseline_tag).toBeUndefined();
 });
 
 test('fullName should build an id with watcher name & container name when called', async () => {

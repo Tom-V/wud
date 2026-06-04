@@ -1,5 +1,14 @@
 import { mount } from '@vue/test-utils';
-import ContainerUpdate from '@/components/ContainerUpdate.vue';
+import ContainerUpdate from '@/components/ContainerUpdate';
+import {
+  resetContainerResultSelection,
+  selectContainerResult,
+} from '@/services/container';
+
+jest.mock('@/services/container', () => ({
+  resetContainerResultSelection: jest.fn(),
+  selectContainerResult: jest.fn(),
+}));
 
 const mockUpdateKind = {
   kind: "tag",
@@ -18,10 +27,14 @@ describe("ContainerUpdate", () => {
   let wrapper;
 
   beforeEach(() => {
+    jest.clearAllMocks();
     wrapper = mount(ContainerUpdate, {
       props: {
+        containerId: "container-1",
         updateKind: mockUpdateKind,
         result: mockResult,
+        currentTag: "1.0.0",
+        updateAvailable: true,
       },
     });
   });
@@ -132,5 +145,156 @@ describe("ContainerUpdate", () => {
 
   it("computes correct update type", () => {
     expect(wrapper.vm.updateKind.kind).toBe("tag");
+  });
+
+  it("renders all update candidates", async () => {
+    await wrapper.setProps({
+      results: [
+        {
+          tag: "2.0.0",
+          created: "2023-01-02T00:00:00Z",
+          selected: true,
+          updateAvailable: true,
+          updateKind: mockUpdateKind,
+        },
+        {
+          tag: "1.1.0",
+          updatePending: true,
+          updatePendingUntil: "2026-06-01T12:00:00.000Z",
+          updateKind: {
+            kind: "tag",
+            localValue: "1.0.0",
+            remoteValue: "1.1.0",
+            semverDiff: "minor",
+          },
+        },
+      ],
+    });
+
+    expect(wrapper.vm.candidateRows).toHaveLength(2);
+    expect(wrapper.text()).toContain("2.0.0");
+    expect(wrapper.text()).toContain("1.1.0");
+    expect(wrapper.text()).toContain("Image created");
+    expect(wrapper.text()).toContain("Selected");
+    expect(wrapper.text()).toContain("Pending");
+    expect(wrapper.find(".candidate-row--selected").exists()).toBe(true);
+    expect(wrapper.find(".candidate-selected-label").exists()).toBe(true);
+  });
+
+  it("selects a different update candidate", async () => {
+    const containerUpdated = {
+      id: "container-1",
+      result: { tag: "1.1.0" },
+    };
+    (selectContainerResult as any).mockResolvedValue(containerUpdated);
+    await wrapper.setProps({
+      results: [
+        {
+          tag: "2.0.0",
+          selected: true,
+          updateAvailable: true,
+          updateKind: mockUpdateKind,
+        },
+        {
+          tag: "1.1.0",
+          updateAvailable: true,
+          updateKind: {
+            kind: "tag",
+            localValue: "1.0.0",
+            remoteValue: "1.1.0",
+            semverDiff: "minor",
+          },
+        },
+      ],
+    });
+
+    await wrapper.vm.selectCandidate(wrapper.vm.candidateRows[1]);
+
+    expect(selectContainerResult).toHaveBeenCalledWith("container-1", {
+      tag: "1.1.0",
+      updateAvailable: true,
+      updateKind: {
+        kind: "tag",
+        localValue: "1.0.0",
+        remoteValue: "1.1.0",
+        semverDiff: "minor",
+      },
+    });
+    expect(wrapper.emitted("container-updated")?.[0]).toEqual([
+      containerUpdated,
+    ]);
+  });
+
+  it("resets manual update candidate selection", async () => {
+    const containerUpdated = {
+      id: "container-1",
+      resultSelection: { mode: "auto" },
+    };
+    (resetContainerResultSelection as any).mockResolvedValue(containerUpdated);
+    await wrapper.setProps({
+      resultSelection: { mode: "manual", tag: "1.1.0" },
+    });
+
+    await wrapper.vm.resetSelection();
+
+    expect(resetContainerResultSelection).toHaveBeenCalledWith("container-1");
+    expect(wrapper.emitted("container-updated")?.[0]).toEqual([
+      containerUpdated,
+    ]);
+  });
+
+  it("formats digest candidates with shortened display values", async () => {
+    await wrapper.setProps({
+      results: [
+        {
+          digest: "sha256:1234567890abcdef1234567890abcdef",
+          selected: true,
+          updateAvailable: true,
+          updateKind: {
+            kind: "digest",
+            localValue: "sha256:old",
+            remoteValue: "sha256:1234567890abcdef1234567890abcdef",
+          },
+        },
+      ],
+    });
+
+    expect(wrapper.vm.selectedVersion).toBe("sha256:1234567890abc...");
+  });
+
+  it("shows same-tag digest candidates as digest updates", async () => {
+    await wrapper.setProps({
+      results: [
+        {
+          tag: "1.0.0",
+          digest: "sha256:1234567890abcdef1234567890abcdef",
+          selected: true,
+          updateAvailable: true,
+        },
+      ],
+    });
+
+    const candidate = wrapper.vm.candidateRows[0];
+    expect(wrapper.vm.selectedVersion).toBe("sha256:1234567890abc...");
+    expect(wrapper.vm.displayUpdateKind(candidate)).toEqual({ kind: "digest" });
+    expect(wrapper.vm.candidateTagMeta(candidate)).toBe("Current tag: 1.0.0");
+    expect(wrapper.vm.canCopyCandidateTag(candidate)).toBe(false);
+  });
+
+  it("does not show unchanged current tag candidates", async () => {
+    await wrapper.setProps({
+      results: [
+        {
+          tag: "1.0.0",
+        },
+        {
+          tag: "1.1.0",
+          updateAvailable: true,
+        },
+      ],
+    });
+
+    expect(wrapper.vm.candidateRows).toHaveLength(1);
+    expect(wrapper.vm.candidateRows[0].tag).toBe("1.1.0");
   });
 });

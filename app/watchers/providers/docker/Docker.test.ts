@@ -4,7 +4,13 @@ import Registry from '../../../registries/Registry';
 import * as event from '../../../event';
 import * as storeContainer from '../../../store/container';
 import * as registry from '../../../registry';
-import { fullName } from '../../../model/container';
+import {
+    applyResultCandidate,
+    candidateMatchesReference,
+    fullName,
+    getSelectionBaselineReference,
+    getSelectionReference,
+} from '../../../model/container';
 
 // Mock all dependencies
 jest.mock('dockerode');
@@ -92,6 +98,67 @@ describe('Docker Watcher', () => {
 
         // Setup fullName mock
         fullName.mockReturnValue('test_container');
+        getSelectionReference.mockImplementation((selection) => ({
+            tag: selection?.tag,
+            digest: selection?.digest,
+            created: selection?.created,
+        }));
+        getSelectionBaselineReference.mockImplementation((selection) => ({
+            tag: selection?.baselineTag,
+            digest: selection?.baselineDigest,
+            created: selection?.baselineCreated,
+        }));
+        candidateMatchesReference.mockImplementation((candidate, reference) => {
+            if (
+                !candidate ||
+                !reference ||
+                (reference.tag === undefined &&
+                    reference.digest === undefined &&
+                    reference.created === undefined)
+            ) {
+                return false;
+            }
+            if (reference.tag !== undefined && candidate.tag !== reference.tag)
+                return false;
+            if (
+                reference.digest !== undefined &&
+                candidate.digest !== reference.digest
+            )
+                return false;
+            if (
+                reference.created !== undefined &&
+                candidate.created !== reference.created
+            )
+                return false;
+            return true;
+        });
+        applyResultCandidate.mockImplementation((container, candidate) => {
+            delete container.updatePendingReason;
+            delete container.updatePendingUntil;
+            container.updatePending = false;
+
+            if (!candidate) {
+                container.result = { tag: container.image.tag.value };
+                return;
+            }
+
+            container.result = {
+                tag: candidate.tag ?? container.image.tag.value,
+            };
+            if (candidate.digest !== undefined) {
+                container.result.digest = candidate.digest;
+            }
+            if (candidate.created !== undefined) {
+                container.result.created = candidate.created;
+            }
+            container.updatePending = candidate.updatePending ?? false;
+            if (candidate.updatePendingReason !== undefined) {
+                container.updatePendingReason = candidate.updatePendingReason;
+            }
+            if (candidate.updatePendingUntil !== undefined) {
+                container.updatePendingUntil = candidate.updatePendingUntil;
+            }
+        });
 
         docker = new Docker();
     });
@@ -795,6 +862,15 @@ describe('Docker Watcher', () => {
             );
             expect(result.digest).toBe('sha256:def456');
             expect(result.created).toBe('2023-01-01');
+            expect(container.results).toEqual([
+                {
+                    digest: 'sha256:def456',
+                    created: '2023-01-01',
+                    updatePending: false,
+                    updatePendingReason: undefined,
+                    updatePendingUntil: undefined,
+                },
+            ]);
         });
 
         test('should handle digest watching with v1 manifest', async () => {
@@ -1014,6 +1090,120 @@ describe('Docker Watcher', () => {
             const result = await docker.findNewVersion(container, mockLogChild);
 
             expect(result).toEqual({ tag: '1.3' });
+        });
+
+        test('should expose all eligible tag candidates', async () => {
+            const container = {
+                image: {
+                    registry: { name: 'hub' },
+                    name: 'organization/image',
+                    tag: { value: '1.0.0', semver: true },
+                    digest: { watch: false },
+                },
+            };
+            const mockRegistry = {
+                getTags: jest
+                    .fn()
+                    .mockResolvedValue(['1.2.0', '1.1.0', '1.0.0']),
+                isDigestToWatch: jest.fn(() => false),
+            };
+            registry.getState.mockReturnValue({
+                registry: { hub: mockRegistry },
+            });
+            mockTag.isGreater.mockImplementation((t1, t2) => {
+                const order = ['1.0.0', '1.1.0', '1.2.0'];
+                return order.indexOf(t1) > order.indexOf(t2);
+            });
+
+            const result = await docker.findNewVersion(container, {
+                error: jest.fn(),
+                warn: jest.fn(),
+                info: jest.fn(),
+            });
+
+            expect(result).toEqual({ tag: '1.2.0' });
+            expect(container.results).toEqual([
+                { tag: '1.2.0', updatePending: false },
+                { tag: '1.1.0', updatePending: false },
+            ]);
+        });
+
+        test('should keep manual result selection when no newer candidate is found', async () => {
+            const container = {
+                resultSelection: {
+                    mode: 'manual',
+                    tag: '1.1.0',
+                    baselineTag: '1.2.0',
+                },
+                image: {
+                    registry: { name: 'hub' },
+                    tag: { value: '1.0.0', semver: true },
+                    digest: { watch: false },
+                },
+            };
+            const mockRegistry = {
+                getTags: jest
+                    .fn()
+                    .mockResolvedValue(['1.2.0', '1.1.0', '1.0.0']),
+                isDigestToWatch: jest.fn(() => false),
+            };
+            registry.getState.mockReturnValue({
+                registry: { hub: mockRegistry },
+            });
+            mockTag.isGreater.mockImplementation((t1, t2) => {
+                const order = ['1.0.0', '1.1.0', '1.2.0'];
+                return order.indexOf(t1) > order.indexOf(t2);
+            });
+
+            const result = await docker.findNewVersion(container, {
+                error: jest.fn(),
+                warn: jest.fn(),
+                info: jest.fn(),
+            });
+
+            expect(result).toEqual({ tag: '1.1.0' });
+            expect(container.resultSelection).toEqual({
+                mode: 'manual',
+                tag: '1.1.0',
+                baselineTag: '1.2.0',
+            });
+        });
+
+        test('should reset manual result selection when a newer candidate is found', async () => {
+            const container = {
+                resultSelection: {
+                    mode: 'manual',
+                    tag: '1.1.0',
+                    baselineTag: '1.2.0',
+                },
+                image: {
+                    registry: { name: 'hub' },
+                    tag: { value: '1.0.0', semver: true },
+                    digest: { watch: false },
+                },
+            };
+            const mockRegistry = {
+                getTags: jest
+                    .fn()
+                    .mockResolvedValue(['1.3.0', '1.2.0', '1.1.0', '1.0.0']),
+                isDigestToWatch: jest.fn(() => false),
+            };
+            registry.getState.mockReturnValue({
+                registry: { hub: mockRegistry },
+            });
+            mockTag.isGreater.mockImplementation((t1, t2) => {
+                const order = ['1.0.0', '1.1.0', '1.2.0', '1.3.0'];
+                return order.indexOf(t1) > order.indexOf(t2);
+            });
+
+            const result = await docker.findNewVersion(container, {
+                error: jest.fn(),
+                warn: jest.fn(),
+                info: jest.fn(),
+            });
+
+            expect(result).toEqual({ tag: '1.3.0' });
+            expect(container.resultSelection).toEqual({ mode: 'auto' });
         });
 
         test('should exclude prerelease tags by default', async () => {
@@ -1236,9 +1426,92 @@ describe('Docker Watcher', () => {
                 created: '2026-05-30T00:00:00.000Z',
             });
             expect(container.updatePending).toBe(false);
+            expect(container.results).toEqual([
+                {
+                    tag: '1.0.2',
+                    created: '2026-05-31T18:00:00.000Z',
+                    updatePending: true,
+                    updatePendingReason: 'minimum-age',
+                    updatePendingUntil: '2026-06-01T06:00:00.000Z',
+                },
+                {
+                    tag: '1.0.1',
+                    created: '2026-05-30T00:00:00.000Z',
+                    updatePending: false,
+                },
+            ]);
             expect(mockRegistry.getImageManifestDigest).toHaveBeenCalledTimes(
                 2,
             );
+        });
+
+        test('should expose all candidates as pending when minimum age blocks every tag', async () => {
+            jest.spyOn(Date, 'now').mockReturnValue(
+                new Date('2026-06-01T00:00:00.000Z').getTime(),
+            );
+            const container = {
+                minAge: '12h',
+                image: {
+                    registry: { name: 'hub' },
+                    name: 'organization/image',
+                    tag: { value: '1.0.0', semver: true },
+                    digest: { watch: false },
+                },
+            };
+            const mockRegistry = {
+                getTags: jest
+                    .fn()
+                    .mockResolvedValue(['1.0.2', '1.0.1', '1.0.0']),
+                getImageManifestDigest: jest.fn((image) =>
+                    Promise.resolve({
+                        digest: `sha256:${image.tag.value}`,
+                        created:
+                            image.tag.value === '1.0.2'
+                                ? '2026-05-31T20:00:00.000Z'
+                                : '2026-05-31T18:00:00.000Z',
+                        version: 2,
+                    }),
+                ),
+                isDigestToWatch: jest.fn(() => false),
+            };
+            registry.getState.mockReturnValue({
+                registry: { hub: mockRegistry },
+            });
+            mockTag.isGreater.mockImplementation((t1, t2) => {
+                const order = ['1.0.0', '1.0.1', '1.0.2'];
+                return order.indexOf(t1) > order.indexOf(t2);
+            });
+
+            const result = await docker.findNewVersion(container, {
+                error: jest.fn(),
+                warn: jest.fn(),
+                info: jest.fn(),
+            });
+
+            expect(result).toEqual({
+                tag: '1.0.2',
+                created: '2026-05-31T20:00:00.000Z',
+            });
+            expect(container.updatePending).toBe(true);
+            expect(container.updatePendingUntil).toBe(
+                '2026-06-01T08:00:00.000Z',
+            );
+            expect(container.results).toEqual([
+                {
+                    tag: '1.0.2',
+                    created: '2026-05-31T20:00:00.000Z',
+                    updatePending: true,
+                    updatePendingReason: 'minimum-age',
+                    updatePendingUntil: '2026-06-01T08:00:00.000Z',
+                },
+                {
+                    tag: '1.0.1',
+                    created: '2026-05-31T18:00:00.000Z',
+                    updatePending: true,
+                    updatePendingReason: 'minimum-age',
+                    updatePendingUntil: '2026-06-01T06:00:00.000Z',
+                },
+            ]);
         });
 
         test('should allow update and warn when remote creation date is missing', async () => {
