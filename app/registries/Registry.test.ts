@@ -112,6 +112,279 @@ test('getImageManifestDigest should return digest for application/vnd.docker.dis
     });
 });
 
+test('getImageManifestDigest should prefer exact variant matches when platform manifests share os and architecture', async () => {
+    const registryMocked = new Registry();
+    registryMocked.log = log;
+    registryMocked.callRegistry = (options) => {
+        if (
+            options.headers.Accept ===
+            'application/vnd.docker.distribution.manifest.list.v2+json, application/vnd.oci.image.index.v1+json, application/vnd.docker.distribution.manifest.v2+json, application/vnd.oci.image.manifest.v1+json'
+        ) {
+            return {
+                schemaVersion: 2,
+                mediaType:
+                    'application/vnd.docker.distribution.manifest.list.v2+json',
+                manifests: [
+                    {
+                        platform: {
+                            architecture: 'arm',
+                            os: 'linux',
+                            variant: 'v6',
+                        },
+                        digest: 'digest_v6',
+                        mediaType:
+                            'application/vnd.docker.distribution.manifest.v2+json',
+                    },
+                    {
+                        platform: {
+                            architecture: 'arm',
+                            os: 'linux',
+                            variant: 'v7',
+                        },
+                        digest: 'digest_v7',
+                        mediaType:
+                            'application/vnd.docker.distribution.manifest.v2+json',
+                    },
+                ],
+            };
+        }
+        if (
+            options.headers.Accept ===
+            'application/vnd.docker.distribution.manifest.v2+json'
+        ) {
+            return {
+                headers: {
+                    'docker-content-digest': 'digest_v7',
+                },
+            };
+        }
+        throw new Error('Boom!');
+    };
+    expect(
+        registryMocked.getImageManifestDigest({
+            name: 'image',
+            architecture: 'arm',
+            os: 'linux',
+            variant: 'v7',
+            tag: {
+                value: 'tag',
+            },
+            registry: {
+                url: 'url',
+            },
+        }),
+    ).resolves.toStrictEqual({
+        version: 2,
+        digest: 'digest_v7',
+    });
+});
+
+test('getImageManifestDigest should reject manifests with the wrong explicit variant', async () => {
+    const registryMocked = new Registry();
+    registryMocked.log = log;
+    registryMocked.callRegistry = (options) => {
+        if (
+            options.headers.Accept ===
+            'application/vnd.docker.distribution.manifest.list.v2+json, application/vnd.oci.image.index.v1+json, application/vnd.docker.distribution.manifest.v2+json, application/vnd.oci.image.manifest.v1+json'
+        ) {
+            return {
+                schemaVersion: 2,
+                mediaType:
+                    'application/vnd.docker.distribution.manifest.list.v2+json',
+                manifests: [
+                    {
+                        platform: {
+                            architecture: 'arm',
+                            os: 'linux',
+                            variant: 'v6',
+                        },
+                        digest: 'digest_v6',
+                        mediaType:
+                            'application/vnd.docker.distribution.manifest.v2+json',
+                    },
+                ],
+            };
+        }
+        throw new Error('Boom!');
+    };
+    expect(
+        registryMocked.getImageManifestDigest({
+            name: 'image',
+            architecture: 'arm',
+            os: 'linux',
+            variant: 'v7',
+            tag: {
+                value: 'tag',
+            },
+            registry: {
+                url: 'url',
+            },
+        }),
+    ).rejects.toEqual(new Error('Unexpected error; no manifest found'));
+});
+
+test('getImageManifestDigest should fall back to a variantless platform match when it is the only matching platform candidate', async () => {
+    const registryMocked = new Registry();
+    registryMocked.log = log;
+    registryMocked.callRegistry = (options) => {
+        if (
+            options.headers.Accept ===
+            'application/vnd.docker.distribution.manifest.list.v2+json, application/vnd.oci.image.index.v1+json, application/vnd.docker.distribution.manifest.v2+json, application/vnd.oci.image.manifest.v1+json'
+        ) {
+            return {
+                schemaVersion: 2,
+                mediaType:
+                    'application/vnd.docker.distribution.manifest.list.v2+json',
+                manifests: [
+                    {
+                        platform: {
+                            architecture: 'arm',
+                            os: 'linux',
+                        },
+                        digest: 'digest_arm',
+                        mediaType:
+                            'application/vnd.docker.distribution.manifest.v2+json',
+                    },
+                ],
+            };
+        }
+        if (
+            options.headers.Accept ===
+            'application/vnd.docker.distribution.manifest.v2+json'
+        ) {
+            return {
+                headers: {
+                    'docker-content-digest': 'digest_arm',
+                },
+            };
+        }
+        throw new Error('Boom!');
+    };
+    expect(
+        registryMocked.getImageManifestDigest({
+            name: 'image',
+            architecture: 'arm',
+            os: 'linux',
+            variant: 'v7',
+            tag: {
+                value: 'tag',
+            },
+            registry: {
+                url: 'url',
+            },
+        }),
+    ).resolves.toStrictEqual({
+        version: 2,
+        digest: 'digest_arm',
+    });
+});
+
+test('getImageManifestDigest should fall back to the first manifest when the manifest list has no platform metadata', async () => {
+    const registryMocked = new Registry();
+    registryMocked.log = log;
+    registryMocked.callRegistry = (options) => {
+        if (
+            options.headers.Accept ===
+            'application/vnd.docker.distribution.manifest.list.v2+json, application/vnd.oci.image.index.v1+json, application/vnd.docker.distribution.manifest.v2+json, application/vnd.oci.image.manifest.v1+json'
+        ) {
+            return {
+                schemaVersion: 2,
+                mediaType:
+                    'application/vnd.docker.distribution.manifest.list.v2+json',
+                manifests: [
+                    {
+                        digest: 'digest_unknown',
+                        mediaType:
+                            'application/vnd.docker.distribution.manifest.v2+json',
+                    },
+                ],
+            };
+        }
+        if (
+            options.headers.Accept ===
+            'application/vnd.docker.distribution.manifest.v2+json'
+        ) {
+            return {
+                headers: {
+                    'docker-content-digest': 'digest_unknown',
+                },
+            };
+        }
+        throw new Error('Boom!');
+    };
+    expect(
+        registryMocked.getImageManifestDigest({
+            name: 'image',
+            architecture: 'amd64',
+            os: 'linux',
+            tag: {
+                value: 'tag',
+            },
+            registry: {
+                url: 'url',
+            },
+        }),
+    ).resolves.toStrictEqual({
+        version: 2,
+        digest: 'digest_unknown',
+    });
+});
+
+test('getImageManifestDigest should fall back to the first manifest when image platform metadata is missing', async () => {
+    const registryMocked = new Registry();
+    registryMocked.log = log;
+    registryMocked.callRegistry = (options) => {
+        if (
+            options.headers.Accept ===
+            'application/vnd.docker.distribution.manifest.list.v2+json, application/vnd.oci.image.index.v1+json, application/vnd.docker.distribution.manifest.v2+json, application/vnd.oci.image.manifest.v1+json'
+        ) {
+            return {
+                schemaVersion: 2,
+                mediaType:
+                    'application/vnd.docker.distribution.manifest.list.v2+json',
+                manifests: [
+                    {
+                        platform: {
+                            architecture: 'arm64',
+                            os: 'linux',
+                        },
+                        digest: 'digest_first',
+                        mediaType:
+                            'application/vnd.docker.distribution.manifest.v2+json',
+                    },
+                ],
+            };
+        }
+        if (
+            options.headers.Accept ===
+            'application/vnd.docker.distribution.manifest.v2+json'
+        ) {
+            return {
+                headers: {
+                    'docker-content-digest': 'digest_first',
+                },
+            };
+        }
+        throw new Error('Boom!');
+    };
+    expect(
+        registryMocked.getImageManifestDigest({
+            name: 'image',
+            architecture: undefined,
+            os: undefined,
+            tag: {
+                value: 'tag',
+            },
+            registry: {
+                url: 'url',
+            },
+        }),
+    ).resolves.toStrictEqual({
+        version: 2,
+        digest: 'digest_first',
+    });
+});
+
 test('getImageManifestDigest should return created date from selected v2 config blob', async () => {
     const registryMocked = new Registry();
     registryMocked.log = log;

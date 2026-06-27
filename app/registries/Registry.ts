@@ -40,6 +40,10 @@ export interface RegistryConfigResponse {
     created?: string;
 }
 
+type RegistryPlatformManifest = NonNullable<
+    RegistryManifestResponse['manifests']
+>[number];
+
 /**
  * Docker Registry Abstract class.
  */
@@ -166,32 +170,10 @@ export class Registry extends Component {
                     log.debug(
                         `Filter manifest for [arch=${image.architecture}, os=${image.os}, variant=${image.variant}]`,
                     );
-                    let manifestFound;
-                    const manifestFounds = responseManifests.manifests.filter(
-                        (manifest: any) =>
-                            manifest.platform.architecture ===
-                                image.architecture &&
-                            manifest.platform.os === image.os,
+                    const manifestFound = this.selectManifestForPlatform(
+                        image,
+                        responseManifests.manifests,
                     );
-
-                    // 1 manifest matching al least? Get the first one (better than nothing)
-                    if (manifestFounds.length > 0) {
-                        [manifestFound] = manifestFounds;
-                    }
-
-                    // Multiple matching manifests? Try to refine using variant filtering
-                    if (manifestFounds.length > 1) {
-                        const manifestFoundFilteredOnVariant =
-                            manifestFounds.find(
-                                (manifest: any) =>
-                                    manifest.platform.variant === image.variant,
-                            );
-
-                        // Manifest exactly matching with variant? Select it
-                        if (manifestFoundFilteredOnVariant) {
-                            manifestFound = manifestFoundFilteredOnVariant;
-                        }
-                    }
 
                     if (manifestFound) {
                         log.debug(
@@ -298,6 +280,78 @@ export class Registry extends Component {
         }
         // Empty result...
         throw new Error('Unexpected error; no manifest found');
+    }
+
+    private hasPlatformMetadata(manifest: RegistryPlatformManifest) {
+        return (
+            manifest.platform?.architecture !== undefined ||
+            manifest.platform?.os !== undefined ||
+            manifest.platform?.variant !== undefined
+        );
+    }
+
+    // Resolve the manifest we can actually use for the current image platform.
+    // Returns:
+    // - an exact os/architecture match when those fields are known
+    // - an exact variant match when variant is also known
+    // - a variantless os/architecture match when no exact variant exists
+    // - the first manifest only when either the image platform or the manifest list
+    //   lacks enough platform metadata to validate more strictly
+    // - undefined when the registry only exposes manifests for a different platform
+    private selectManifestForPlatform(
+        image: ContainerImage,
+        manifests: RegistryPlatformManifest[] = [],
+    ) {
+        if (!manifests.length) {
+            return undefined;
+        }
+
+        // Keep the legacy "best available" fallback when the local image does not
+        // tell us which platform we should be validating against.
+        if (!image.architecture || !image.os) {
+            log.debug(
+                'Original image platform is incomplete; falling back to the first manifest in the list',
+            );
+            return manifests[0];
+        }
+
+        const manifestsWithPlatform = manifests.filter((manifest) =>
+            this.hasPlatformMetadata(manifest),
+        );
+        const manifestsMatchingPlatform = manifestsWithPlatform.filter(
+            (manifest) =>
+                manifest.platform?.architecture === image.architecture &&
+                manifest.platform?.os === image.os,
+        );
+
+        if (manifestsMatchingPlatform.length === 0) {
+            // Some registries publish manifest lists without per-entry platform data.
+            // We can only keep the old fallback in that specific case.
+            if (manifestsWithPlatform.length === 0) {
+                log.debug(
+                    'Manifest list has no platform metadata; falling back to the first manifest in the list',
+                );
+                return manifests[0];
+            }
+            return undefined;
+        }
+
+        if (!image.variant) {
+            return manifestsMatchingPlatform[0];
+        }
+
+        const manifestMatchingVariant = manifestsMatchingPlatform.find(
+            (manifest) => manifest.platform?.variant === image.variant,
+        );
+        if (manifestMatchingVariant) {
+            return manifestMatchingVariant;
+        }
+
+        // A variantless manifest is still acceptable when os/architecture match and
+        // the registry does not publish a more specific variant entry for this image.
+        return manifestsMatchingPlatform.find(
+            (manifest) => manifest.platform?.variant === undefined,
+        );
     }
 
     private async getImageCreatedFromManifest(
