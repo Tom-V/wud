@@ -37,6 +37,7 @@ import {
     getSelectionReference,
 } from '../../../model/container';
 import * as registry from '../../../registry';
+import { RegistryManifest } from '../../../registries/Registry';
 import { getWatchContainerGauge } from '../../../prometheus/watcher';
 import Watcher from '../../Watcher';
 import { ComponentConfiguration } from '../../../registry/Component';
@@ -318,6 +319,16 @@ function hasUpdateCandidate(container: Container, result: any) {
         );
     }
     return false;
+}
+
+function getContainerPlatform(container: Container) {
+    return `${container.image.os}/${container.image.architecture}${
+        container.image.variant ? `/${container.image.variant}` : ''
+    }`;
+}
+
+function getErrorMessage(error: any) {
+    return error?.message ?? String(error);
 }
 
 /**
@@ -911,17 +922,29 @@ export class Docker extends Watcher {
         tagCandidate: string,
         registryProvider: any,
         logContainer: Logger,
-        minAgeMs: number,
+        tagCandidateManifests: Map<string, RegistryManifest>,
     ) {
         const result: any = { tag: tagCandidate };
-        if (minAgeMs > 0) {
-            await this.addRemoteCreatedToResult(
-                container,
-                result,
-                registryProvider,
-                logContainer,
+        try {
+            const imageToGetMetadataFrom = JSON.parse(
+                JSON.stringify(container.image),
             );
+            imageToGetMetadataFrom.tag.value = tagCandidate;
+
+            const remoteManifest =
+                await registryProvider.getImageManifestDigest(
+                    imageToGetMetadataFrom,
+                );
+            result.digest = remoteManifest.digest;
+            result.created = remoteManifest.created;
+            tagCandidateManifests.set(tagCandidate, remoteManifest);
+        } catch (e: any) {
+            logContainer.warn(
+                `Skipping update candidate ${container.image.name}:${tagCandidate} for platform ${getContainerPlatform(container)} because its manifest could not be resolved (${getErrorMessage(e)})`,
+            );
+            return undefined;
         }
+
         return result;
     }
 
@@ -931,18 +954,12 @@ export class Docker extends Watcher {
         registryProvider: any,
         logContainer: Logger,
     ) {
+        const tagCandidateManifests = new Map<string, RegistryManifest>();
         if (!tagsCandidates || tagsCandidates.length === 0) {
-            return [];
+            return { results: [], tagCandidateManifests };
         }
 
         const minAgeMs = parseDurationMs(container.minAge ?? '0s');
-        if (minAgeMs === 0) {
-            return tagsCandidates.map((tagCandidate) => ({
-                tag: tagCandidate,
-                updatePending: false,
-            }));
-        }
-
         const results: any[] = [];
         for (const tagCandidate of tagsCandidates) {
             const result = await this.getTagCandidateResult(
@@ -950,8 +967,18 @@ export class Docker extends Watcher {
                 tagCandidate,
                 registryProvider,
                 logContainer,
-                minAgeMs,
+                tagCandidateManifests,
             );
+            if (!result) {
+                continue;
+            }
+
+            if (minAgeMs === 0) {
+                result.updatePending = false;
+                results.push(result);
+                continue;
+            }
+
             const createdTime = new Date(result.created).getTime();
             if (Number.isNaN(createdTime)) {
                 logContainer.warn(
@@ -970,7 +997,7 @@ export class Docker extends Watcher {
             }
             results.push(result);
         }
-        return results;
+        return { results, tagCandidateManifests };
     }
 
     private getSelectedTagCandidateResult(
@@ -1016,7 +1043,10 @@ export class Docker extends Watcher {
         const newestCandidate = container.results[0];
         const baselineReference =
             getSelectionBaselineReference(resultSelection);
-        if (!candidateMatchesReference(newestCandidate, baselineReference)) {
+        if (
+            newestCandidate &&
+            !candidateMatchesReference(newestCandidate, baselineReference)
+        ) {
             container.resultSelection = { mode: 'auto' };
             logContainer.info(
                 `Manual result selection reset because a newer candidate was found for ${container.image.name}`,
@@ -1088,12 +1118,13 @@ export class Docker extends Watcher {
                 logContainer,
             );
 
-            const tagCandidateResults = await this.getTagCandidateResults(
-                container,
-                tagsCandidates,
-                registryProvider,
-                logContainer,
-            );
+            const { results: tagCandidateResults, tagCandidateManifests } =
+                await this.getTagCandidateResults(
+                    container,
+                    tagsCandidates,
+                    registryProvider,
+                    logContainer,
+                );
             container.results = tagCandidateResults;
 
             const tagCandidateResult = this.getSelectedTagCandidateResult(
@@ -1119,9 +1150,10 @@ export class Docker extends Watcher {
                 imageToGetDigestFrom.tag.value = result.tag;
 
                 const remoteDigest =
-                    await registryProvider.getImageManifestDigest(
+                    tagCandidateManifests.get(result.tag) ??
+                    (await registryProvider.getImageManifestDigest(
                         imageToGetDigestFrom,
-                    );
+                    ));
 
                 result.digest = remoteDigest.digest;
                 result.created = result.created ?? remoteDigest.created;
