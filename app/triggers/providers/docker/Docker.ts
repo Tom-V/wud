@@ -11,6 +11,32 @@ import { parseDockerImageName } from '../../../watchers/providers/docker/image';
  * Replace a Docker container with an updated one.
  */
 class Docker extends Trigger {
+    getPullProgressError(progressEvents: any[] | undefined) {
+        if (!Array.isArray(progressEvents)) {
+            return undefined;
+        }
+
+        const progressError = progressEvents.find((progressEvent) => {
+            if (!progressEvent || typeof progressEvent !== 'object') {
+                return false;
+            }
+            return (
+                typeof progressEvent.error === 'string' ||
+                typeof progressEvent.errorDetail?.message === 'string'
+            );
+        });
+
+        if (!progressError) {
+            return undefined;
+        }
+
+        const message =
+            progressError.errorDetail?.message ||
+            progressError.error ||
+            'Unknown error reported while pulling image';
+        return new Error(message);
+    }
+
     /**
      * Get the Trigger configuration schema.
      */
@@ -172,9 +198,30 @@ class Docker extends Trigger {
                 authconfig: auth,
             });
 
-            await new Promise((res) =>
-                dockerApi.modem.followProgress(pullStream, res),
+            await new Promise<any[]>((resolve, reject) =>
+                dockerApi.modem.followProgress(
+                    pullStream,
+                    (error, progressEvents) => {
+                        if (error) {
+                            reject(error);
+                            return;
+                        }
+
+                        const progressError =
+                            this.getPullProgressError(progressEvents);
+                        if (progressError) {
+                            reject(progressError);
+                            return;
+                        }
+
+                        resolve(progressEvents);
+                    },
+                ),
             );
+
+            // Check if the image was pulled successfully by inspecting it
+            const image = await dockerApi.getImage(newImage);
+            await image.inspect();
             logContainer.info(`Image ${newImage} pulled with success`);
         } catch (e: any) {
             logContainer.warn(

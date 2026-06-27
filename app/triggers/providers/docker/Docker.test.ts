@@ -85,6 +85,21 @@ jest.mock('../../../registry', () => ({
                         },
                         getImage: (image) =>
                             Promise.resolve({
+                                inspect: () => {
+                                    if (
+                                        image === 'test/test:1.2.3' ||
+                                        image === 'my-registry/test/test:4.5.6'
+                                    ) {
+                                        return Promise.resolve({
+                                            Id: 'image-id',
+                                        });
+                                    }
+                                    return Promise.reject(
+                                        new Error(
+                                            'Error when inspecting image',
+                                        ),
+                                    );
+                                },
                                 remove: () => {
                                     if (image === 'test/test:1.2.3') {
                                         return Promise.resolve();
@@ -358,6 +373,44 @@ test('pull should throw error when error occurs', async () => {
     ).rejects.toThrowError('Error when pulling image');
 });
 
+test('pull should throw when followProgress reports an error', async () => {
+    const dockerApi = {
+        pull: () => Promise.resolve({}),
+        getImage: jest.fn(),
+        modem: {
+            followProgress: (_pullStream, done) =>
+                done(new Error('pull stream failed')),
+        },
+    };
+
+    await expect(
+        docker.pullImage(dockerApi as any, undefined, 'test/test:1.2.3', log),
+    ).rejects.toThrow('pull stream failed');
+    expect(dockerApi.getImage).not.toHaveBeenCalled();
+});
+
+test('pull should throw when followProgress result contains an error detail', async () => {
+    const dockerApi = {
+        pull: () => Promise.resolve({}),
+        getImage: jest.fn(),
+        modem: {
+            followProgress: (_pullStream, done) =>
+                done(null, [
+                    {
+                        errorDetail: {
+                            message: 'manifest for test/test:1.2.3 not found',
+                        },
+                    },
+                ]),
+        },
+    };
+
+    await expect(
+        docker.pullImage(dockerApi as any, undefined, 'test/test:1.2.3', log),
+    ).rejects.toThrow('manifest for test/test:1.2.3 not found');
+    expect(dockerApi.getImage).not.toHaveBeenCalled();
+});
+
 test('removeImage should pull image from dockerApi', async () => {
     await expect(
         docker.removeImage(
@@ -468,6 +521,72 @@ test('trigger should not throw when all is ok', async () => {
     ).resolves.toBeUndefined();
 });
 
+test('trigger should not stop or remove the container when pulled image is not available locally', async () => {
+    const stop = jest.fn(() => Promise.resolve());
+    const remove = jest.fn(() => Promise.resolve());
+    const createContainer = jest.fn();
+    const dockerApi = {
+        pull: () => Promise.resolve({}),
+        getImage: () =>
+            Promise.resolve({
+                inspect: () => Promise.reject(new Error('No such image')),
+            }),
+        createContainer,
+        getNetwork: jest.fn(),
+        modem: {
+            followProgress: (_pullStream, done) => done(null, []),
+        },
+        getContainer: () =>
+            Promise.resolve({
+                inspect: () =>
+                    Promise.resolve({
+                        Name: '/container-name',
+                        Id: '123456798',
+                        State: {
+                            Running: true,
+                        },
+                        NetworkSettings: {
+                            Networks: {
+                                test: {
+                                    Aliases: ['9708fc7b44f2', 'test'],
+                                },
+                            },
+                        },
+                    }),
+                stop,
+                remove,
+                start: () => Promise.resolve(),
+            }),
+    };
+    const watcherSpy = jest.spyOn(docker, 'getWatcher').mockReturnValue({
+        dockerApi,
+    });
+
+    await expect(
+        docker.trigger({
+            watcher: 'test',
+            id: '123456789',
+            name: 'container-name',
+            image: {
+                name: 'test/test',
+                registry: {
+                    name: 'hub',
+                    url: 'my-registry',
+                },
+            },
+            updateKind: {
+                remoteValue: '4.5.6',
+            },
+        }),
+    ).rejects.toThrow('No such image');
+
+    watcherSpy.mockRestore();
+
+    expect(stop).not.toHaveBeenCalled();
+    expect(remove).not.toHaveBeenCalled();
+    expect(createContainer).not.toHaveBeenCalled();
+});
+
 test('trigger should not use fallback when multi-network create succeeds', async () => {
     const createContainer = jest.fn(() =>
         Promise.resolve({
@@ -482,6 +601,10 @@ test('trigger should not use fallback when multi-network create succeeds', async
         createContainer,
         getNetwork,
         pull: () => Promise.resolve(),
+        getImage: () =>
+            Promise.resolve({
+                inspect: () => Promise.resolve({ Id: 'image-id' }),
+            }),
         modem: {
             followProgress: (pullStream, res) => res(),
         },
@@ -567,6 +690,10 @@ test('trigger should fallback to primary then connect secondary networks', async
         createContainer,
         getNetwork,
         pull: () => Promise.resolve(),
+        getImage: () =>
+            Promise.resolve({
+                inspect: () => Promise.resolve({ Id: 'image-id' }),
+            }),
         modem: {
             followProgress: (pullStream, res) => res(),
         },
@@ -661,6 +788,10 @@ test('trigger should throw when fallback cannot connect a secondary network', as
         createContainer,
         getNetwork,
         pull: () => Promise.resolve(),
+        getImage: () =>
+            Promise.resolve({
+                inspect: () => Promise.resolve({ Id: 'image-id' }),
+            }),
         modem: {
             followProgress: (pullStream, res) => res(),
         },
