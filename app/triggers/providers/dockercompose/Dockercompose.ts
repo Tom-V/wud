@@ -4,32 +4,53 @@ import path from 'path';
 import yaml from 'yaml';
 import Docker from '../docker/Docker';
 import { getState } from '../../../registry';
-
-/**
- * Return true if the container belongs to the compose file.
- * @param compose
- * @param container
- * @returns true/false
- */
-function doesContainerBelongToCompose(compose, container) {
-    // Get registry configuration
-    const registry = getState().registry[container.image.registry.name];
-
-    // Rebuild image definition string
-    const currentImage = registry.getImageFullName(
-        container.image,
-        container.image.tag.value,
-    );
-    return Object.keys(compose.services).some((key) => {
-        const service = compose.services[key];
-        return Boolean(service.image) && service.image.includes(currentImage);
-    });
-}
+import { getContainers } from '../../../store/container';
 
 /**
  * Update a Docker compose stack with an updated one.
  */
 class Dockercompose extends Docker {
+    private composeServiceLabel = 'com.docker.compose.service';
+
+    /**
+     * Match a watched container back to its compose service.
+     * Prefer the compose service label, then container_name, and only
+     * fall back to image matching for older or less explicit setups.
+     */
+    getComposeServiceKey(compose, container) {
+        const composeService = (container.labels || {})[
+            this.composeServiceLabel
+        ];
+        if (composeService && compose.services?.[composeService]) {
+            return composeService;
+        }
+
+        const serviceKeyFromContainerName = Object.keys(
+            compose.services || {},
+        ).find(
+            (serviceKey) =>
+                compose.services?.[serviceKey]?.container_name ===
+                container.name,
+        );
+        if (serviceKeyFromContainerName) {
+            return serviceKeyFromContainerName;
+        }
+
+        const registry = getState().registry[container.image.registry.name];
+        const currentImage = registry.getImageFullName(
+            container.image,
+            container.image.tag.value,
+        );
+
+        return Object.keys(compose.services || {}).find((serviceKey) => {
+            const serviceImage = compose.services?.[serviceKey]?.image;
+            const images = Array.isArray(serviceImage)
+                ? serviceImage
+                : [serviceImage];
+            return images.includes(currentImage);
+        });
+    }
+
     /**
      * Get the Trigger configuration schema.
      * @returns {*}
@@ -165,8 +186,9 @@ class Dockercompose extends Docker {
         const compose = await this.getComposeFileAsObject(composeFile);
 
         // Filter containers that belong to this compose file
-        const containersFiltered = containers.filter((container) =>
-            doesContainerBelongToCompose(compose, container),
+        const containersFiltered = containers.filter(
+            (container) =>
+                this.getComposeServiceKey(compose, container) !== undefined,
         );
 
         if (containersFiltered.length === 0) {
@@ -174,24 +196,79 @@ class Dockercompose extends Docker {
             return;
         }
 
-        // Track which services have already been mapped to avoid duplicates
-        // (multiple containers can share the same image/service)
-        const processedServices = new Set();
-        containersFiltered.forEach((container) =>
+        // Expand the manual trigger to sibling watched services in the same
+        // compose file when they share the same declared image.
+        const containersToUpdate = new Map(
+            containersFiltered.map((container) => [
+                container.id || `${container.watcher}:${container.name}`,
+                container,
+            ]),
+        );
+        const siblingServiceKeys = new Set();
+
+        containersFiltered.forEach((container) => {
+            const serviceKey = this.getComposeServiceKey(compose, container);
+            if (!serviceKey) {
+                return;
+            }
+
+            const serviceImage = compose.services?.[serviceKey]?.image;
+            Object.keys(compose.services || {}).forEach(
+                (candidateServiceKey) => {
+                    if (
+                        compose.services?.[candidateServiceKey]?.image ===
+                        serviceImage
+                    ) {
+                        siblingServiceKeys.add(candidateServiceKey);
+                    }
+                },
+            );
+        });
+
+        getContainers({})
+            .filter(
+                (candidateContainer) =>
+                    this.getComposeFileForContainer(candidateContainer) ===
+                    composeFile,
+            )
+            .forEach((candidateContainer) => {
+                const serviceKey = this.getComposeServiceKey(
+                    compose,
+                    candidateContainer,
+                );
+                if (serviceKey && siblingServiceKeys.has(serviceKey)) {
+                    containersToUpdate.set(
+                        candidateContainer.id ||
+                            `${candidateContainer.watcher}:${candidateContainer.name}`,
+                        candidateContainer,
+                    );
+                }
+            });
+
+        const containersToUpdateList = Array.from(containersToUpdate.values());
+        containersToUpdateList.forEach((container) =>
             this.assertContainerNotPending(container, this.log),
         );
 
+        // Track which services have already been mapped to avoid duplicates
+        // (multiple containers can share the same image/service)
+        const processedServices = new Set();
+
         // [{ current: '1.0.0', update: '2.0.0' }, {...}]
-        const currentVersionToUpdateVersionArray = containersFiltered
-            .map((container) => {
-                const mapping = this.mapCurrentVersionToUpdateVersion(
-                    compose,
-                    container,
-                    processedServices,
-                );
-                return mapping;
-            })
-            .filter((map) => map !== undefined);
+        const currentVersionToUpdateVersionArray = Array.from(
+            new Map(
+                containersToUpdateList
+                    .map((container) =>
+                        this.mapCurrentVersionToUpdateVersion(
+                            compose,
+                            container,
+                            processedServices,
+                        ),
+                    )
+                    .filter((map) => map !== undefined)
+                    .map((map) => [`${map.current}|${map.update}`, map]),
+            ).values(),
+        );
 
         // Dry-run?
         if (this.configuration.dryrun) {
@@ -224,7 +301,7 @@ class Dockercompose extends Docker {
         // Update all containers
         // (super.notify will take care of the dry-run mode for each container as well)
         await Promise.all(
-            containersFiltered.map((container) => super.trigger(container)),
+            containersToUpdateList.map((container) => super.trigger(container)),
         );
     }
 
@@ -258,26 +335,14 @@ class Dockercompose extends Docker {
         // Get registry configuration
         this.log.debug(`Get ${container.image.registry.name} registry manager`);
         const registry = getState().registry[container.image.registry.name];
-
-        // Rebuild image definition string
-        const currentImage = registry.getImageFullName(
-            container.image,
-            container.image.tag.value,
-        );
-
-        const serviceKeyToUpdate = Object.keys(compose.services).find(
-            (serviceKey) => {
-                const service = compose.services[serviceKey];
-                return (
-                    Boolean(service.image) &&
-                    service.image.includes(currentImage)
-                );
-            },
+        const serviceKeyToUpdate = this.getComposeServiceKey(
+            compose,
+            container,
         );
 
         if (!serviceKeyToUpdate) {
             this.log.warn(
-                `Could not find service for container ${container.name} with image ${currentImage}`,
+                `Could not find service for container ${container.name} in compose file`,
             );
             return undefined;
         }
@@ -295,7 +360,6 @@ class Dockercompose extends Docker {
             processedServices.add(serviceKeyToUpdate);
         }
 
-        // Rebuild image definition string
         return {
             current: compose.services[serviceKeyToUpdate].image,
             update: this.getNewImageFullName(registry, container),
@@ -355,4 +419,3 @@ class Dockercompose extends Docker {
 }
 
 export default Dockercompose;
-export { doesContainerBelongToCompose };
