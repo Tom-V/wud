@@ -30,7 +30,7 @@
         <v-col class="pt-2 pb-2">
           <container-item
             :groupingLabel="groupByLabel"
-            :previousContainer="containersFiltered[index - 1]"
+            :previousContainer="getPreviousContainer(index)"
             :container="container"
             :oldest-first="oldestFirst"
             @delete-container="deleteContainer(container)"

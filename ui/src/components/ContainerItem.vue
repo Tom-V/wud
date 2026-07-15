@@ -2,7 +2,8 @@
   <div>
     <div v-if="showGroupingHeader">
       <div class="text-h6">
-        {{ this.groupingLabel }} = {{ groupingValue }}
+        {{ groupingLabel }} =
+        {{ groupingValue }}
       </div>
       <v-divider class="pb-3"></v-divider>
     </div>

@@ -1,20 +1,20 @@
 
 
 // Mock the auth service
-jest.mock('@/services/auth', () => ({
-  getUser: jest.fn()
+vi.mock('@/services/auth', () => ({
+  getUser: vi.fn()
 }));
 
 // Import router after mocking
+import { getUser } from '@/services/auth';
 import router from '@/router';
 
 describe('Router', () => {
   let mockNext;
 
   beforeEach(() => {
-    const { getUser } = require('@/services/auth');
-    getUser.mockClear();
-    mockNext = jest.fn();
+    (getUser as any).mockClear();
+    mockNext = vi.fn();
   });
 
   it('has correct routes defined', () => {
@@ -32,8 +32,7 @@ describe('Router', () => {
   });
 
   it('allows access to login route without authentication', async () => {
-    const { getUser } = require('@/services/auth');
-    getUser.mockResolvedValue(undefined);
+    (getUser as any).mockResolvedValue(undefined);
 
     // Get the navigation guard
     const routes = router.getRoutes();
@@ -50,24 +49,21 @@ describe('Router', () => {
   });
 
   it('redirects to login when user is not authenticated', async () => {
-    const { getUser } = require('@/services/auth');
-    getUser.mockResolvedValue(undefined);
+    (getUser as any).mockResolvedValue(undefined);
 
     // Skip router guard test - not accessible in test environment
     expect(true).toBe(true);
   });
 
   it('allows access to protected routes when authenticated', async () => {
-    const { getUser } = require('@/services/auth');
-    getUser.mockResolvedValue({ username: 'testuser' });
+    (getUser as any).mockResolvedValue({ username: 'testuser' });
 
     // Skip router guard test - not accessible in test environment
     expect(true).toBe(true);
   });
 
   it('redirects to next route after authentication', async () => {
-    const { getUser } = require('@/services/auth');
-    getUser.mockResolvedValue({ username: 'testuser' });
+    (getUser as any).mockResolvedValue({ username: 'testuser' });
 
     // Skip router guard test - not accessible in test environment
     expect(true).toBe(true);

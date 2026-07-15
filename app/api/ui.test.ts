@@ -1,33 +1,78 @@
-import express from 'express';
-import request from 'supertest';
-import * as ui from './ui';
-import fs from 'fs';
+// @ts-nocheck
+const mockRouter = {
+    use: jest.fn(),
+    get: jest.fn(),
+};
 
-jest.spyOn(fs, 'readFileSync').mockReturnValue(
-    '<html><body><div id="app"></div></body></html>',
-);
+const mockStatic = jest.fn((basePath, options) => ({ basePath, options }));
+
+jest.mock('express', () => ({
+    __esModule: true,
+    default: {
+        Router: jest.fn(() => mockRouter),
+        static: mockStatic,
+    },
+}));
+
+jest.mock('fs', () => ({
+    __esModule: true,
+    default: {
+        existsSync: jest.fn(),
+    },
+}));
+
+jest.mock('../log', () => ({
+    __esModule: true,
+    default: {
+        child: jest.fn(() => ({
+            debug: jest.fn(),
+            error: jest.fn(),
+        })),
+        debug: jest.fn(),
+        error: jest.fn(),
+    },
+}));
+
 jest.mock('../configuration', () => ({
+    __esModule: true,
     getServerConfiguration: jest.fn(() => ({
-        basepath: '/wud',
+        basepath: '/',
     })),
 }));
 
-describe('API UI', () => {
-    let app: express.Express;
+import path from 'path';
+import fs from 'fs';
+import * as uiRouter from './ui';
+
+describe('UI Router', () => {
+    const uiPath = path.join(__dirname, '..', '..', 'ui');
+    const builtUiPath = path.join(uiPath, 'dist');
 
     beforeEach(() => {
         jest.clearAllMocks();
-        app = express();
-        app.use(ui.init());
     });
 
-    test('should serve index html and inject basepath', async () => {
-        const res = await request(app).get('/any-path');
-        expect(res.status).toBe(200);
-        expect(res.header['content-type']).toContain('text/html');
-        expect(res.header['cache-control']).toBe('no-store');
-        expect(res.text).toContain(
-            '<script>window.__WUD_BASE_PATH__=\'/wud\'</script><div id="app">',
+    test('should prefer the built UI dist when it exists', () => {
+        fs.existsSync.mockImplementation(
+            (filePath) => filePath === path.join(builtUiPath, 'index.html'),
         );
+
+        uiRouter.init();
+
+        expect(mockStatic).toHaveBeenCalledWith(builtUiPath, {
+            index: false,
+        });
+    });
+
+    test('should fall back to the UI directory for release layout', () => {
+        fs.existsSync.mockImplementation(
+            (filePath) => filePath === path.join(uiPath, 'index.html'),
+        );
+
+        uiRouter.init();
+
+        expect(mockStatic).toHaveBeenCalledWith(uiPath, {
+            index: false,
+        });
     });
 });

@@ -1,13 +1,13 @@
-import { mount } from '@vue/test-utils';
-import ContainerUpdate from '@/components/ContainerUpdate';
+import { mount } from "@vue/test-utils";
+import ContainerUpdate from "@/components/ContainerUpdate.vue";
 import {
   resetContainerResultSelection,
   selectContainerResult,
-} from '@/services/container';
+} from "@/services/container";
 
-jest.mock('@/services/container', () => ({
-  resetContainerResultSelection: jest.fn(),
-  selectContainerResult: jest.fn(),
+vi.mock("@/services/container", () => ({
+  resetContainerResultSelection: vi.fn(),
+  selectContainerResult: vi.fn(),
 }));
 
 const mockUpdateKind = {
@@ -27,7 +27,7 @@ describe("ContainerUpdate", () => {
   let wrapper;
 
   beforeEach(() => {
-    jest.clearAllMocks();
+    vi.clearAllMocks();
     wrapper = mount(ContainerUpdate, {
       props: {
         containerId: "container-1",

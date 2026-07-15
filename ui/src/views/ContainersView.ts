@@ -167,6 +167,9 @@ export default defineComponent({
     onRefreshAllContainers(containersRefreshed: any[]) {
       this.containers = containersRefreshed;
     },
+    getPreviousContainer(index: string | number) {
+      return this.containersFiltered[Number(index) - 1];
+    },
     removeContainerFromList(container: any) {
       this.containers = this.containers.filter((c) => c.id !== container.id);
     },

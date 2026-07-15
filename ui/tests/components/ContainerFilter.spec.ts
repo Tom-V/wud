@@ -1,5 +1,6 @@
 import { mount } from '@vue/test-utils';
 import ContainerFilter from '@/components/ContainerFilter.vue';
+import { refreshAllContainers } from '@/services/container';
 
 const mockProps = {
   registries: ['hub', 'ghcr'],
@@ -15,8 +16,8 @@ const mockProps = {
 };
 
 // Mock the container service
-jest.mock('@/services/container', () => ({
-  refreshAllContainers: jest.fn(() => Promise.resolve([]))
+vi.mock('@/services/container', () => ({
+  refreshAllContainers: vi.fn(() => Promise.resolve([]))
 }));
 
 describe('ContainerFilter', () => {
@@ -80,8 +81,7 @@ describe('ContainerFilter', () => {
   });
 
   it('handles refresh all containers action', async () => {
-    const { refreshAllContainers } = require('@/services/container');
-    refreshAllContainers.mockResolvedValue([{ id: 'test' }]);
+    (refreshAllContainers as any).mockResolvedValue([{ id: 'test' }]);
 
     await wrapper.vm.refreshAllContainers();
 
@@ -90,8 +90,7 @@ describe('ContainerFilter', () => {
   });
 
   it('handles refresh error gracefully', async () => {
-    const { refreshAllContainers } = require('@/services/container');
-    refreshAllContainers.mockRejectedValue(new Error('Network error'));
+    (refreshAllContainers as any).mockRejectedValue(new Error('Network error'));
 
     await wrapper.vm.refreshAllContainers();
 

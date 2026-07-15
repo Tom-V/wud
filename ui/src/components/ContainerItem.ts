@@ -6,7 +6,7 @@ import ContainerImage from "@/components/ContainerImage.vue";
 import ContainerTriggers from "@/components/ContainerTriggers.vue";
 import ContainerUpdate from "@/components/ContainerUpdate.vue";
 import IconRenderer from "@/components/IconRenderer.vue";
-import { defineComponent } from "vue";
+import { defineComponent, PropType } from "vue";
 
 function isVisibleUpdateCandidate(container: any, candidate: any) {
   if (!candidate) {
@@ -42,11 +42,11 @@ export default defineComponent({
 
   props: {
     container: {
-      type: Object,
+      type: Object as PropType<any>,
       required: true,
     },
     previousContainer: {
-      type: Object,
+      type: Object as PropType<any | undefined>,
       required: false,
     },
     groupingLabel: {

@@ -2,7 +2,7 @@
 FROM --platform=$BUILDPLATFORM node:24-alpine AS app-build
 WORKDIR /home/node/app
 COPY app/package*.json ./
-RUN npm ci --include=dev --omit=optional --no-audit --no-fund --no-update-notifier
+RUN npm ci --include=dev --no-audit --no-fund --no-update-notifier
 COPY app/ ./
 RUN npm run build
 RUN npm prune --omit=dev
