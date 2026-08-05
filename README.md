@@ -33,6 +33,11 @@
 </p>
 
 ## 💡 About WUD
+## Key Changes
+
+### 0.9 (WIP)
+
+- Update base to wud:8.3.1
 
 **WUD (What's Up Docker?)** is a lightweight, proactive container update monitoring and automation tool. It continuously scans your container environments, detects image updates across public and private registries, performs semantic version analysis, and alerts you via your favorite notification channels—or triggers automatic container updates seamlessly.
 
