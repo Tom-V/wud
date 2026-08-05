@@ -115,6 +115,7 @@ test('publishDiscoveryMessage must use the configured device id and name', async
         name: 'Custom Device Name',
         sw_version: 'unknown',
     });
+    configuredHass.deregister();
 });
 
 test('addContainerSensor must publish sensor discovery message expected by HA', async () => {

@@ -81,6 +81,7 @@ function getHaDevice(configuration: MqqtConfiguration) {
 
 /**
  * Sanitize icon to meet hass requirements.
+ * @param icon
  */
 function sanitizeIcon(icon: string) {
     return icon
@@ -115,35 +116,30 @@ class Hass {
      * Set connection status sensor to online and subscribe to container and watcher events.
      */
     async init(client: mqtt.MqttClient) {
+        // Cleanup so we make sure older registrations don't survive
+        this.deregister();
+
         this.client = client;
 
         // Subscribe to container events to sync HA
-        this.cleanupListeners.push(
+        this.cleanupListeners = [
             registerContainerAdded((container) =>
                 this.addContainerSensor(container),
             ),
-        );
-        this.cleanupListeners.push(
             registerContainerUpdated((container) =>
                 this.addContainerSensor(container),
             ),
-        );
-        this.cleanupListeners.push(
             registerContainerRemoved((container) =>
                 this.removeContainerSensor(container),
             ),
-        );
-        // Subscribe to watcher events to sync HA
-        this.cleanupListeners.push(
+            // Subscribe to watcher events to sync HA
             registerWatcherStart((watcher) =>
                 this.updateWatcherSensors({ watcher, isRunning: true }),
             ),
-        );
-        this.cleanupListeners.push(
             registerWatcherStop((watcher) =>
                 this.updateWatcherSensors({ watcher, isRunning: false }),
             ),
-        );
+        ];
     }
 
     async publishDiscoveryMessages(sensors: HassDiscoverySensor[]) {
