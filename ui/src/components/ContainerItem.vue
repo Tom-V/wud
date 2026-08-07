@@ -300,6 +300,22 @@ export default defineComponent({
       return getRegistryProviderIcon(this.container.image.registry.name);
     },
 
+    showGroupingHeader() {
+      return (
+        this.groupingLabel &&
+        this.previousContainer?.labels?.[this.groupingLabel] !==
+          this.container.labels?.[this.groupingLabel]
+      );
+    },
+
+    groupingValue() {
+      return this.container.labels?.[this.groupingLabel] ?? "(empty)";
+    },
+
+    formattedCreatedDate() {
+      return (this as any).$filters.date(this.container.image.created);
+    },
+
     osIcon() {
       let icon = "mdi-help";
       switch (this.container.image.os) {
@@ -332,7 +348,29 @@ export default defineComponent({
       return newVersion;
     },
 
+    updateCandidateCount() {
+      const results = Array.isArray(this.container.results)
+        ? this.container.results
+        : [];
+      if (results.length > 0) {
+        const currentTag = this.container.image?.tag?.value;
+        return results.filter(
+          (candidate: any) =>
+            candidate?.updateAvailable ||
+            candidate?.updatePending ||
+            (candidate?.tag !== undefined && candidate.tag !== currentTag) ||
+            (candidate?.digest !== undefined && candidate.tag === currentTag),
+        ).length;
+      }
+      return this.container.updateAvailable || this.container.updatePending
+        ? 1
+        : 0;
+    },
+
     newVersionClass() {
+      if (this.container.updatePending) {
+        return "info";
+      }
       let color = "warning";
       if (
         this.container.updateKind &&

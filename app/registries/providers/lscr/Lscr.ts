@@ -6,6 +6,10 @@ import Ghcr from '../ghcr/Ghcr';
 class Lscr extends Ghcr {
     protected registryPattern = /^.*\.?lscr.io$/;
 
+    match(imageUrl: string) {
+        return imageUrl === 'lscr.io';
+    }
+
     getConfigurationSchema() {
         return this.joi.object().keys({
             username: this.joi.string().required(),

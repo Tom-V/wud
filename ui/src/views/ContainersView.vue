@@ -96,10 +96,7 @@ export default defineComponent({
       return [
         ...new Set(
           this.containers
-            .filter((container) => container.updateAvailable)
-            .filter((container) => container.updateKind.kind === "tag")
-            .filter((container) => container.updateKind.semverDiff)
-            .map((container) => container.updateKind.semverDiff)
+            .flatMap((container) => this.getContainerUpdateKinds(container))
             .sort(),
         ),
       ];
@@ -118,8 +115,9 @@ export default defineComponent({
         )
         .filter((container) =>
           this.updateKindSelected
-            ? this.updateKindSelected ===
-              (container.updateKind && container.updateKind.semverDiff)
+            ? this.getContainerUpdateKinds(container).includes(
+                this.updateKindSelected,
+              )
             : true,
         )
         .filter((container) =>
@@ -174,6 +172,24 @@ export default defineComponent({
       this.updateKindSelected = updateKindSelected;
       this.updateQueryParams();
     },
+    getContainerUpdateKinds(container: any) {
+      const results = Array.isArray(container.results) ? container.results : [];
+      const resultKinds = results
+        .filter((result: any) => result.updateAvailable || result.updatePending)
+        .filter((result: any) => result.updateKind?.kind === "tag")
+        .filter((result: any) => result.updateKind?.semverDiff)
+        .map((result: any) => result.updateKind.semverDiff);
+
+      if (resultKinds.length > 0) {
+        return resultKinds;
+      }
+
+      return container.updateAvailable &&
+        container.updateKind?.kind === "tag" &&
+        container.updateKind?.semverDiff
+        ? [container.updateKind.semverDiff]
+        : [];
+    },
     updateQueryParams() {
       const query: any = {};
       if (this.registrySelected) {
@@ -201,6 +217,14 @@ export default defineComponent({
     },
     removeContainerFromList(container: any) {
       this.containers = this.containers.filter((c) => c.id !== container.id);
+    },
+    getPreviousContainer(index: number) {
+      return index > 0 ? this.containersFiltered[index - 1] : undefined;
+    },
+    updateContainerInList(containerUpdated: any) {
+      this.containers = this.containers.map((container) =>
+        container.id === containerUpdated.id ? containerUpdated : container,
+      );
     },
     async deleteContainer(container: any) {
       try {

@@ -65,7 +65,7 @@ export class Registry extends Component {
     /**
      * If this registry is responsible for the image url (to be overridden).
      */
-    match(_imageUrl: string): boolean {
+    match(_imageUrl: string, _imageName?: string): boolean {
         return false;
     }
 

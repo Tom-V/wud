@@ -18,6 +18,22 @@ class Gcr extends DockerRegistryV2 {
         ]);
     }
 
+    maskConfiguration() {
+        return this.maskSensitiveFields(['privatekey']);
+    }
+
+    matchUrlPattern(imageUrl: string, pattern: RegExp) {
+        return pattern.test(imageUrl);
+    }
+
+    match(imageUrl: string) {
+        return this.matchUrlPattern(imageUrl, /^.*\.?gcr.io$/);
+    }
+
+    normalizeImage(image: ContainerImage) {
+        return this.normalizeImageUrl(image);
+    }
+
     async authenticate(
         image: ContainerImage,
         requestOptions: AxiosRequestConfig,

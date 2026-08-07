@@ -13,6 +13,7 @@ import {
 import * as event from '../../../event';
 import {
     wudWatch,
+    wudRegistry,
     wudTagInclude,
     wudTagExclude,
     wudTagIncludePrerelease,
@@ -1285,8 +1286,10 @@ export class Docker extends Watcher {
         const parsedImage = parseDockerImageName(imageNameToParse);
         const tagName = parsedImage.tag ? parsedImage.tag : 'latest';
 
-        const registryProvider = Object.values(getRegistries()).find(
-            (registry) => registry.match(parsedImage.domain),
+        const registryProvider = this.getRegistryProvider(
+            parsedImage.domain,
+            parsedImage.path,
+            container.Labels?.[wudRegistry],
         );
 
         if (!registryProvider) {
@@ -1391,8 +1394,10 @@ export class Docker extends Watcher {
 
     private normalizeContainer(container: Container) {
         const containerWithNormalizedImage = container;
-        const registryProvider = Object.values(getRegistries()).find(
-            (provider) => provider.match(container.image.registry.url),
+        const registryProvider = this.getRegistryProvider(
+            container.image.registry.url,
+            container.image.name,
+            container.labels?.[wudRegistry],
         );
         if (!registryProvider) {
             this.log.warn(
@@ -1406,6 +1411,34 @@ export class Docker extends Watcher {
                 registryProvider.getId();
         }
         return validateContainer(containerWithNormalizedImage);
+    }
+
+    private getRegistryProvider(
+        imageUrl: string | undefined,
+        imageName: string | undefined,
+        registryName?: string,
+    ) {
+        const registries = getRegistries();
+        if (registryName) {
+            const registryProvider = registries[registryName.toLowerCase()];
+            if (!registryProvider) {
+                this.log.warn(
+                    `Registry ${registryName} configured for image ${imageUrl} was not found`,
+                );
+                return undefined;
+            }
+            if (!registryProvider.match(imageUrl, imageName)) {
+                this.log.warn(
+                    `Registry ${registryName} configured for image ${imageUrl} does not match the image registry`,
+                );
+                return undefined;
+            }
+            return registryProvider;
+        }
+
+        return Object.values(registries).find((registry) =>
+            registry.match(imageUrl, imageName),
+        );
     }
 }
 

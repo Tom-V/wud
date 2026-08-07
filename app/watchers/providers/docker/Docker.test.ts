@@ -2002,6 +2002,53 @@ describe('Docker Watcher', () => {
             expect(result).toBeDefined();
         });
 
+        test('should use the registry selected by the container label', async () => {
+            await docker.register('watcher', 'docker', 'test', {});
+            const container = {
+                Id: '123',
+                Image: 'ghcr.io/account-two/app:1.0.0',
+                Names: ['/test-container'],
+                State: 'running',
+                Labels: { 'wud.registry': 'ghcr.account2' },
+            };
+            const imageDetails = {
+                Id: 'image123',
+                Architecture: 'amd64',
+                Os: 'linux',
+                Created: '2023-01-01',
+            };
+            mockImage.inspect.mockResolvedValue(imageDetails);
+
+            const firstRegistry = {
+                normalizeImage: jest.fn((img) => img),
+                getId: () => 'ghcr.account1',
+                match: jest.fn(() => true),
+                shouldWatchDigest: jest.fn(() => false),
+            };
+            const secondRegistry = {
+                normalizeImage: jest.fn((img) => img),
+                getId: () => 'ghcr.account2',
+                match: jest.fn(() => true),
+                shouldWatchDigest: jest.fn(() => false),
+            };
+            registry.getState.mockReturnValue({
+                registry: {
+                    'ghcr.account1': firstRegistry,
+                    'ghcr.account2': secondRegistry,
+                },
+            });
+
+            const containerModule = await import('../../../model/container');
+            const validateContainer = containerModule.validate;
+            validateContainer.mockImplementation((value) => value);
+
+            const result = await docker.addImageDetailsToContainer(container);
+
+            expect(firstRegistry.normalizeImage).not.toHaveBeenCalled();
+            expect(secondRegistry.normalizeImage).toHaveBeenCalled();
+            expect(result.image.registry.name).toBe('ghcr.account2');
+        });
+
         test('should default includePrerelease to false in normalized containers', async () => {
             await docker.register('watcher', 'docker', 'test', {});
             const container = {

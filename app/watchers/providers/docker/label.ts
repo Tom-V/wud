@@ -8,6 +8,11 @@
 export const wudWatch = 'wud.watch';
 
 /**
+ * Optional registry component ID to use for this container.
+ */
+export const wudRegistry = 'wud.registry';
+
+/**
  * Optional regex indicating what tags to consider.
  */
 export const wudTagInclude = 'wud.tag.include';
